@@ -28,6 +28,14 @@ caro:
     win-length: 5
     turn-time: 30s
     reconnect-grace: 30s
+  matchmaking:
+    initial-range: 100           # rating gap accepted right after joining the queue
+    range-step: 50               # ... widened by this much
+    step-interval: 5s            # ... every 5 seconds of waiting
+    match-anyone-after: 30s      # after this, any opponent is fine
+    check-interval: 1s
+  invite:
+    timeout: 20s
   heartbeat:
     idle-timeout: 30s            # close a session if nothing was received for this long
     check-interval: 5s

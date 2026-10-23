@@ -64,6 +64,15 @@ public class MessageDispatcher {
     record LeaderboardRequest(Integer page, Integer size) {
     }
 
+    record InviteRequest(Long userId) {
+    }
+
+    record InviteReplyRequest(String inviteId, Boolean accept) {
+    }
+
+    record CancelInviteRequest(String inviteId) {
+    }
+
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final ObjectMapper mapper;
@@ -208,6 +217,35 @@ public class MessageDispatcher {
                 ok(session, reqId, queries.leaderboard(orDefault(req.page(), 0),
                         orDefault(req.size(), DEFAULT_PAGE_SIZE)));
             }
+            case LIST_ONLINE -> ok(session, reqId, Map.of("users", lobby.listOnline()));
+            case QUICK_MATCH -> ok(session, reqId, lobby.joinQueue(userId(session)));
+            case CANCEL_QUICK_MATCH -> {
+                lobby.leaveQueue(userId(session));
+                ok(session, reqId, Map.of());
+            }
+            case INVITE -> {
+                InviteRequest req = read(data, InviteRequest.class);
+                requireField(req.userId(), "userId");
+                ok(session, reqId, lobby.invite(userId(session), req.userId()));
+            }
+            case INVITE_REPLY -> {
+                InviteReplyRequest req = read(data, InviteReplyRequest.class);
+                requireField(req.inviteId(), "inviteId");
+                requireField(req.accept(), "accept");
+                if (req.accept()) {
+                    ok(session, reqId, Map.of("room", lobby.acceptInvite(userId(session), req.inviteId())));
+                } else {
+                    lobby.declineInvite(userId(session), req.inviteId());
+                    ok(session, reqId, Map.of());
+                }
+            }
+            case CANCEL_INVITE -> {
+                CancelInviteRequest req = read(data, CancelInviteRequest.class);
+                requireField(req.inviteId(), "inviteId");
+                lobby.cancelInvite(userId(session), req.inviteId());
+                ok(session, reqId, Map.of());
+            }
+            case REMATCH -> ok(session, reqId, Map.of("room", lobby.requestRematch(userId(session))));
         }
     }
 

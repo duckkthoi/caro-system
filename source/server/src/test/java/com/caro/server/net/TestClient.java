@@ -67,6 +67,11 @@ abstract class TestClient implements AutoCloseable {
         return await(m -> type.equals(m.path("type").asText()));
     }
 
+    /** Waits for the next message of this type whose data matches. Earlier messages of that type are kept. */
+    JsonNode awaitType(String type, Predicate<JsonNode> data) {
+        return await(m -> type.equals(m.path("type").asText()) && data.test(m.path("data")));
+    }
+
     boolean awaitClosedByServer() throws InterruptedException {
         long deadline = System.currentTimeMillis() + TIMEOUT_MS;
         while (!closedByServer && System.currentTimeMillis() < deadline) {

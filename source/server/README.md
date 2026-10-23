@@ -94,7 +94,7 @@ REST /api ─► AuthController ─► AuthService                         Match
 | `net` | Lõi giao thức, không phụ thuộc tầng truyền tải: `ClientSession`, `SessionRegistry`, `MessageDispatcher`, `HeartbeatMonitor` |
 | `net.tcp` | `TcpServer`: `ServerSocket`, một virtual thread cho mỗi kết nối, framing bằng `\n` |
 | `net.ws` | `GameWebSocketHandler`: WebSocket thuần (không dùng STOMP) |
-| `lobby` | Phòng chờ: tạo, vào, rời phòng; bắt đầu trận; xử lý mất kết nối và kết nối lại ở mức phòng |
+| `lobby` | Mọi thứ ngoài trận đấu: phòng, danh sách online, ghép trận nhanh (`MatchmakingQueue`), lời mời, chơi lại; xử lý mất kết nối và kết nối lại ở mức phòng |
 | `match` | `GameMatch` (trạng thái trận trong RAM, đồng hồ lượt, chờ kết nối lại), lưu kết quả xuống DB |
 | `game` | Java thuần: `Board`, `RuleEngine` (kiểm tra 5 quân), `Elo` |
 | `player` | Đọc dữ liệu đã lưu: hồ sơ, thống kê, lịch sử, xem lại trận, bảng xếp hạng. Dùng chung cho REST và socket |
@@ -124,6 +124,11 @@ REST /api ─► AuthController ─► AuthService                         Match
 9. **Khóa tài khoản an toàn khi đang có trận.** Admin khóa thì trạng thái được ghi DB trước (chỉ cập nhật cột
    `status`, không ghi đè `rating`), sau đó mới đá phiên đang online. Trận đang chơi xử lý như mất kết nối.
    JWT cũ cũng mất hiệu lực ngay, vì mỗi request đều đọc lại user từ DB.
+10. **Một khóa cho toàn bộ sảnh.** Phòng, hàng chờ, lời mời và danh sách online cùng nằm dưới khóa của
+    `LobbyService`. Nhờ vậy một người không thể vừa được ghép ngẫu nhiên vừa nhận lời mời rồi rơi vào hai trận.
+    Thao tác ở sảnh hiếm hơn nhiều so với nước đi, nên một khóa là đủ; còn nước đi chỉ khóa theo từng trận.
+11. **Thuật toán ghép tách riêng.** `MatchmakingQueue` là Java thuần (không khóa, không mạng, thời gian truyền vào
+    dưới dạng tham số), nên test được hết các trường hợp nới khoảng điểm mà không phải chờ thật.
 
 ---
 
@@ -138,15 +143,17 @@ Không cần Docker, vì test dùng H2 in-memory.
 |---|---|
 | `RuleEngineTest` | Thắng theo 4 hướng, ở mép bàn, 6 quân, bị chặn hai đầu, bị quân đối phương cắt |
 | `EloTest` | Công thức Elo |
+| `MatchmakingQueueTest` | Ghép ngay khi điểm gần nhau, chênh nhiều thì phải chờ cả hai nới khoảng, ghép bất kỳ sau 30 giây, ưu tiên người chờ lâu nhất và đối thủ gần điểm nhất |
 | `GameMatchTest` | Lượt đi, ô không hợp lệ, thắng/hòa/đầu hàng/hết giờ, kết thúc đúng một lần, timer cũ bị bỏ qua, mất kết nối/kết nối lại/hủy trận |
 | `GameFlowIntegrationTest` | Chạy thật qua socket: **client TCP đấu với client WebSocket**, lưu DB và Elo, kết nối lại giữa trận, đăng nhập lần hai đá phiên cũ, lỗi giao thức |
+| `LobbyFeaturesIntegrationTest` | Ghép trận nhanh (X/O ngẫu nhiên, trạng thái online đổi theo), hủy tìm trận, lời mời được đồng ý/từ chối/hủy/hết hạn/đóng khi người kia offline, đồng ý lời mời thì tự rời hàng chờ, chơi lại đổi quân |
 | `RestApiIntegrationTest` | Sau một trận: hồ sơ, lịch sử, xem lại trận, bảng xếp hạng (REST và socket ra cùng kết quả); mã lỗi REST 400/401/403/404; admin khóa người đang trong trận (bị `KICKED`, đối thủ nhận `OPPONENT_DISCONNECTED`, token cũ hết hiệu lực) rồi mở khóa |
 
 ---
 
 ## ➕ MỞ RỘNG
 
-**Thêm một loại thông điệp mới** (ví dụ `INVITE`):
+**Thêm một loại thông điệp mới** (ví dụ `CHAT`):
 1. Đặc tả trong `docs/protocol.md`.
 2. Thêm giá trị vào `ClientMessageType` (và `ServerMessageType` nếu có sự kiện mới).
 3. Thêm một nhánh `case` trong `MessageDispatcher.handle()` và gọi sang service tương ứng.

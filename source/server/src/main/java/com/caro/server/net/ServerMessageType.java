@@ -13,5 +13,9 @@ public enum ServerMessageType {
     MATCH_STATE,
     OPPONENT_DISCONNECTED,
     OPPONENT_RECONNECTED,
-    KICKED
+    KICKED,
+    ONLINE_USERS,
+    QUEUE_STATUS,
+    INVITED,
+    INVITE_CLOSED
 }

@@ -26,7 +26,8 @@ những gì server gửi về và không tự đặt quân hay tự kết luận
 
 ## 2. Phòng và trận đấu
 
-- Mỗi người chơi chỉ ở **tối đa một phòng** tại một thời điểm.
+- Mỗi người chơi chỉ ở **tối đa một phòng** tại một thời điểm, và không thể vừa ở trong phòng vừa ở hàng chờ
+  tìm trận (mục 8). Vào phòng bằng bất kỳ cách nào cũng tự rời hàng chờ.
 - Phòng có tối đa 2 người. Người tạo phòng là chủ phòng (host).
 - Khi người thứ hai vào phòng, **trận đấu tự động bắt đầu**.
 - Người tạo phòng cầm `X` ở ván đầu. Khi chơi lại (rematch), hai người đổi quân cho nhau.
@@ -85,3 +86,55 @@ Người chơi đang ở phòng `WAITING` hoặc `FINISHED` mà mất kết nố
 - Mỗi trận được lưu **đúng một lần** khi kết thúc: một dòng trong bảng `matches` (khóa chính là `matchId`)
   cùng toàn bộ nước đi trong bảng `match_moves`.
 - Trạng thái phòng và trận đang diễn ra chỉ nằm trong bộ nhớ server, không ghi vào DB.
+
+## 8. Tìm trận nhanh, mời người chơi và chơi lại
+
+### 8.1. Danh sách người online
+
+Mỗi người online có một trạng thái:
+
+| Trạng thái | Ý nghĩa |
+|---|---|
+| `IDLE` | Rảnh: không ở phòng nào, không tìm trận |
+| `IN_QUEUE` | Đang tìm trận nhanh |
+| `IN_ROOM` | Ở trong phòng đang chờ (`WAITING`) hoặc vừa đấu xong (`FINISHED`) |
+| `PLAYING` | Đang đấu |
+
+Server gửi lại danh sách cho mọi người mỗi khi có người vào/ra, đổi phòng, vào/ra hàng chờ hay bắt đầu/kết thúc trận.
+
+### 8.2. Tìm trận nhanh (ghép ngẫu nhiên theo Elo)
+
+- Chỉ người **không ở trong phòng** mới vào hàng chờ được. Vào hàng chờ sẽ tự hủy lời mời mình đang gửi.
+- Mỗi người trong hàng chờ chấp nhận đối thủ chênh lệch điểm trong một **khoảng**, nới rộng dần theo thời gian chờ:
+
+| Đã chờ | Khoảng chênh lệch chấp nhận |
+|---|---|
+| 0 – 5 giây | ±100 |
+| 5 – 10 giây | ±150 |
+| ... | thêm ±50 sau mỗi 5 giây |
+| từ 30 giây | Bất kỳ ai |
+
+- Hai người được ghép khi chênh lệch điểm nằm trong khoảng của **cả hai**.
+- Người chờ lâu nhất được ưu tiên trước, và được ghép với người có điểm **gần nhất**.
+- Server kiểm tra hàng chờ mỗi giây. Ngay khi vừa vào hàng chờ, server cũng thử ghép luôn.
+- Khi ghép được: server tự tạo phòng, **bốc thăm** ai cầm `X`, và trận bắt đầu ngay.
+- Mất kết nối, đăng xuất hoặc bị khóa sẽ tự ra khỏi hàng chờ.
+
+### 8.3. Mời người chơi
+
+- Người mời phải đang **rảnh** hoặc đang **một mình trong phòng chờ** của mình, và không ở hàng chờ.
+- Người được mời phải **online** và **không ở trong phòng** (đang ở hàng chờ vẫn được mời).
+- Mỗi người chỉ có **một lời mời đang chờ** tại một thời điểm. Lời mời **hết hạn sau 20 giây**.
+- Người được mời có thể **đồng ý** hoặc **từ chối**. Người mời có thể **hủy** lời mời.
+- Khi đồng ý:
+  - người được mời tự rời hàng chờ (nếu đang ở đó);
+  - nếu người mời đang có phòng chờ thì người được mời vào phòng đó, nếu không thì server tạo phòng mới;
+  - **người mời cầm `X`**, trận bắt đầu ngay.
+- Lời mời bị đóng (`UNAVAILABLE`) khi một trong hai người mất kết nối hoặc bắt đầu một trận khác.
+
+### 8.4. Chơi lại (rematch)
+
+- Chỉ dùng được khi phòng ở trạng thái `FINISHED` (trận vừa xong, hai người vẫn còn trong phòng).
+- Mỗi người bấm chơi lại một lần. Khi **cả hai** đã bấm, trận mới bắt đầu và hai người **đổi quân** cho nhau.
+- Người kia nhìn thấy yêu cầu chơi lại qua `ROOM_UPDATE` (trường `rematchRequests`).
+- Không muốn chơi lại thì rời phòng. Khi một người rời phòng, các yêu cầu chơi lại bị xóa.

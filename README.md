@@ -95,8 +95,7 @@ cd source/server && ./mvnw test                # unit test + integration test (T
 
 | Kênh | Protocol | Định dạng |
 |------|----------|-----------|
-| `host:9090` | TCP | Mỗi dòng một JSON `{"type","reqId","data"}`, kết thúc bằng `
-` |
+| `host:9090` | TCP | Mỗi dòng một JSON `{"type","reqId","data"}`, kết thúc bằng `\n` |
 | `ws://host:8080/ws` | WebSocket | Mỗi text frame một JSON, cùng định dạng với TCP |
 | `http://host:8080/api` | HTTP/1.1 REST | JSON, xác thực bằng `Authorization: Bearer <JWT>` |
 
@@ -114,6 +113,10 @@ cd source/server && ./mvnw test                # unit test + integration test (T
 | `GET /api/users/{id}/matches` · `GET_HISTORY` | HTTP · TCP/WS | `userId`, `page`, `size` | Lịch sử đấu (phân trang) |
 | `GET /api/matches/{id}` · `GET_MATCH` | HTTP · TCP/WS | `matchId` | Chi tiết trận và toàn bộ nước đi (xem lại ván) |
 | `GET /api/leaderboard` · `GET_LEADERBOARD` | HTTP · TCP/WS | `page`, `size` | Bảng xếp hạng theo Elo |
+| `LIST_ONLINE` | TCP/WS | (không có) | `OK {"users"}` cùng sự kiện `ONLINE_USERS` khi có thay đổi |
+| `QUICK_MATCH` / `CANCEL_QUICK_MATCH` | TCP/WS | (không có) | Ghép trận ngẫu nhiên theo Elo: `QUEUE_STATUS`, rồi `MATCH_START` khi ghép được |
+| `INVITE` / `INVITE_REPLY` / `CANCEL_INVITE` | TCP/WS | `{"userId"}` / `{"inviteId","accept"}` / `{"inviteId"}` | Mời người online: sự kiện `INVITED`, `INVITE_CLOSED` |
+| `REMATCH` | TCP/WS | (không có) | Chơi lại khi cả hai đồng ý, đổi quân |
 | `/api/admin/**` | HTTP | (role `ADMIN`) | Thống kê hệ thống, tìm/khóa/mở khóa tài khoản, xem phòng và trận |
 
 ---
@@ -143,8 +146,10 @@ jnp-project-starter/
     │   ├── pom.xml, mvnw, Dockerfile
     │   └── src/main/java/com/caro/server/
     │       ├── net/             # lõi giao thức, net/tcp, net/ws
-    │       ├── lobby/           # phòng chờ
+    │       ├── lobby/           # phòng, danh sách online, ghép trận, lời mời, chơi lại
     │       ├── match/           # trận đấu và lưu kết quả
+    │       ├── player/          # hồ sơ, lịch sử, bảng xếp hạng (REST + socket)
+    │       ├── admin/           # API quản trị
     │       ├── game/            # bàn cờ, luật thắng, Elo
     │       ├── auth/, user/     # tài khoản, JWT
     │       └── config/, common/

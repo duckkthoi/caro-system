@@ -1,7 +1,9 @@
 package com.caro.server.lobby;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.caro.server.match.GameMatch;
 import com.caro.server.user.PlayerInfo;
@@ -14,6 +16,7 @@ final class Room {
     private final String id;
     private final String name;
     private final List<PlayerInfo> players = new ArrayList<>(CAPACITY); // index 0 is the host
+    private final Set<Long> rematchRequests = new LinkedHashSet<>();
     private GameMatch match; // latest match played in this room, may be finished
 
     Room(String id, String name, PlayerInfo host) {
@@ -44,6 +47,7 @@ final class Room {
 
     void removePlayer(long userId) {
         players.removeIf(p -> p.id() == userId);
+        rematchRequests.clear();
     }
 
     /** Replaces the stored info of a player (e.g. after their rating changed). */
@@ -57,6 +61,13 @@ final class Room {
 
     void setMatch(GameMatch match) {
         this.match = match;
+        rematchRequests.clear();
+    }
+
+    /** @return true once both players have asked */
+    boolean requestRematch(long userId) {
+        rematchRequests.add(userId);
+        return rematchRequests.size() == CAPACITY;
     }
 
     /** Derived from the players and the match, so it can never get out of sync. */
@@ -68,6 +79,7 @@ final class Room {
     }
 
     RoomInfo info() {
-        return new RoomInfo(id, name, status(), host().id(), players(), match == null ? null : match.id());
+        return new RoomInfo(id, name, status(), host().id(), players(), match == null ? null : match.id(),
+                List.copyOf(rematchRequests));
     }
 }

@@ -17,7 +17,14 @@ public enum ClientMessageType {
     GET_PROFILE(true),
     GET_HISTORY(true),
     GET_MATCH(true),
-    GET_LEADERBOARD(true);
+    GET_LEADERBOARD(true),
+    LIST_ONLINE(true),
+    QUICK_MATCH(true),
+    CANCEL_QUICK_MATCH(true),
+    INVITE(true),
+    INVITE_REPLY(true),
+    CANCEL_INVITE(true),
+    REMATCH(true);
 
     private final boolean requiresAuth;
 

@@ -9,3 +9,5 @@ spring:
 caro:
   tcp:
     port: 0   # random free port, see TcpServer.getLocalPort()
+  invite:
+    timeout: 2s   # short, so the expiry can be tested

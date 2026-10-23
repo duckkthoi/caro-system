@@ -70,13 +70,20 @@ trước khi đăng nhập sẽ nhận lỗi `UNAUTHORIZED`.
 | `LOGIN` | `{"username","password"}` | `{"token","user": UserInfo}` | Dùng cho client desktop |
 | `AUTH` | `{"token"}` | `{"user": UserInfo}` | Dùng cho Web: lấy token qua REST rồi gửi làm thông điệp đầu tiên trên WS |
 | `LOGOUT` | (không có) | `{}` | Tự rời phòng (đang trong trận thì tính là đầu hàng), sau đó server đóng kết nối |
-| `GET_STATE` | (không có) | `{"room": RoomInfo\|null, "match": MatchState\|null}` | Đồng bộ lại toàn bộ trạng thái |
+| `GET_STATE` | (không có) | `{"room": RoomInfo\|null, "match": MatchState\|null, "queue": QueueStatus}` | Đồng bộ lại toàn bộ trạng thái |
 | `LIST_ROOMS` | (không có) | `{"rooms": [RoomInfo]}` | |
 | `CREATE_ROOM` | `{"name"?}` | `{"room": RoomInfo}` | Tên tối đa 40 ký tự. Bỏ trống thì server tự đặt |
 | `JOIN_ROOM` | `{"roomId"}` | `{"room": RoomInfo}` | Trận bắt đầu ngay khi phòng đủ 2 người |
 | `LEAVE_ROOM` | (không có) | `{}` | Rời phòng khi trận đang diễn ra tính là đầu hàng |
 | `MOVE` | `{"matchId","x","y"}` | `{"moveNo"}` | Kết quả của nước đi được gửi qua sự kiện `MOVE_APPLIED` |
 | `RESIGN` | `{"matchId"}` | `{}` | |
+| `LIST_ONLINE` | (không có) | `{"users": [OnlineUser]}` | Sau đó server tự đẩy `ONLINE_USERS` mỗi khi có thay đổi |
+| `QUICK_MATCH` | (không có) | `QueueStatus` | Vào hàng chờ ghép ngẫu nhiên (rules.md mục 8.2). Nếu ghép được ngay thì `inQueue = false` và `MATCH_START` tới luôn |
+| `CANCEL_QUICK_MATCH` | (không có) | `{}` | Rời hàng chờ |
+| `INVITE` | `{"userId"}` | `{"inviteId","expiresAt"}` | Người được mời nhận `INVITED` |
+| `INVITE_REPLY` | `{"inviteId","accept": true\|false}` | Đồng ý: `{"room": RoomInfo}`. Từ chối: `{}` | Đồng ý thì trận bắt đầu ngay, người mời cầm `X` |
+| `CANCEL_INVITE` | `{"inviteId"}` | `{}` | Người mời rút lại lời mời |
+| `REMATCH` | (không có) | `{"room": RoomInfo}` | Chỉ khi phòng `FINISHED`. Cả hai cùng gửi thì trận mới bắt đầu, đổi quân |
 | `GET_PROFILE` | `{"userId"?}` | `Profile` | Bỏ `userId` để xem của chính mình |
 | `GET_HISTORY` | `{"userId"?,"page"?,"size"?}` | `Page<HistoryItem>` | Như `GET /api/users/{id}/matches` |
 | `GET_MATCH` | `{"matchId"}` | `MatchDetail` | Trận đã kết thúc và đã lưu |
@@ -100,10 +107,14 @@ server tự gửi thêm `ROOM_UPDATE` và `MATCH_STATE`.
 | `MATCH_STATE` | Người vừa kết nối lại | `MatchState` |
 | `OPPONENT_DISCONNECTED` | Người còn lại | `{"matchId","userId","graceDeadline"}` |
 | `OPPONENT_RECONNECTED` | Người còn lại | `{"matchId","userId","turnDeadline"}` |
+| `ONLINE_USERS` | Mọi người đã đăng nhập, mỗi khi danh sách hoặc trạng thái người online thay đổi | `{"users": [OnlineUser]}` |
+| `QUEUE_STATUS` | Người trong hàng chờ: khi khoảng điểm được nới rộng, và khi rời hàng chờ vì đã vào phòng/được ghép | `QueueStatus` |
+| `INVITED` | Người được mời | `{"inviteId","from": PlayerInfo,"expiresAt"}` |
+| `INVITE_CLOSED` | Bên còn lại của lời mời (bên vừa thao tác đã nhận `OK`) | `{"inviteId","reason"}`, `reason`: `ACCEPTED` \| `DECLINED` \| `CANCELLED` \| `EXPIRED` \| `UNAVAILABLE` |
 | `KICKED` | Phiên bị đá | `{"reason": "LOGGED_IN_ELSEWHERE" \| "ACCOUNT_LOCKED"}`. Server đóng kết nối ngay sau đó |
 | `ERROR` (không có `reqId`) | Phiên gửi dữ liệu hỏng | `{"code","message"}`. Ví dụ JSON sai cú pháp |
 
-Mọi mốc thời gian (`turnDeadline`, `graceDeadline`, `serverTime`) đều tính bằng **epoch milliseconds
+Mọi mốc thời gian (`turnDeadline`, `graceDeadline`, `serverTime`, `expiresAt`, `since`) đều tính bằng **epoch milliseconds
 theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để bù độ lệch đồng hồ khi hiển thị đếm ngược.
 
 ## 5. Các kiểu dữ liệu
@@ -122,7 +133,20 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
   "status": "WAITING",          // WAITING | PLAYING | FINISHED
   "hostId": 1,
   "players": [PlayerInfo],      // 1 hoặc 2 người, host đứng đầu
-  "matchId": null               // id của trận gần nhất trong phòng (nếu có)
+  "matchId": null,              // id của trận gần nhất trong phòng (nếu có)
+  "rematchRequests": [1]         // id những người đã bấm chơi lại (chỉ có ý nghĩa khi FINISHED)
+}
+
+// OnlineUser
+{"id": 2, "username": "bob", "displayName": "Bob", "rating": 1016,
+ "status": "IDLE"}              // IDLE | IN_QUEUE | IN_ROOM | PLAYING
+
+// QueueStatus
+{
+  "inQueue": true,
+  "since": 1761200000000,        // lúc vào hàng chờ (epoch ms), null nếu không ở hàng chờ
+  "ratingRange": 150,            // chênh lệch điểm đang chấp nhận; null + inQueue=true nghĩa là "bất kỳ ai"
+  "queueSize": 3                 // số người đang chờ
 }
 
 // MatchState: ảnh chụp đầy đủ của một trận (riêng cho từng người nhận)
@@ -233,6 +257,13 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
 | `NOT_YOUR_TURN` | Chưa đến lượt |
 | `INVALID_POSITION` | Tọa độ nằm ngoài bàn cờ |
 | `CELL_OCCUPIED` | Ô đã có quân |
+| `ALREADY_IN_QUEUE` | Gửi `QUICK_MATCH` khi đã ở hàng chờ, hoặc mời người khác khi đang ở hàng chờ |
+| `NOT_IN_QUEUE` | Gửi `CANCEL_QUICK_MATCH` khi không ở hàng chờ |
+| `USER_OFFLINE` | Mời người không online |
+| `USER_BUSY` | Mời người đang ở trong phòng |
+| `INVITE_PENDING` | Gửi lời mời mới khi lời mời trước chưa được trả lời |
+| `INVITE_NOT_FOUND` | Lời mời không tồn tại, đã hết hạn, đã đóng, hoặc người mời không còn sẵn sàng |
+| `REMATCH_NOT_AVAILABLE` | Gửi `REMATCH` khi phòng không ở trạng thái `FINISHED` |
 | `FORBIDDEN` | Không đủ quyền (REST admin) |
 | `INTERNAL_ERROR` | Lỗi không lường trước ở server |
 
@@ -258,8 +289,3 @@ Có thể dùng `ncat localhost 9090` (đi kèm Nmap) hoặc `telnet localhost 9
 
 Lưu ý: sự kiện push (như `MOVE_APPLIED`) có thể đến **trước** `OK` của chính yêu cầu đã gây ra nó.
 Client phải xử lý thông điệp theo `type` và `reqId`, không được giả định thứ tự.
-
-## 8. Dự kiến bổ sung (chưa triển khai)
-
-`LIST_ONLINE` / `ONLINE_USERS`, `INVITE` / `INVITED` / `INVITE_REPLY`, `REMATCH`. Các thông điệp này sẽ
-được đặc tả ở đây trước khi code.
