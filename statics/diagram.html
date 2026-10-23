@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; background: #ffffff; font-family: "Segoe UI", Arial, sans-serif; }
+  svg { display: block; }
+  .box { fill: #ffffff; stroke: #c9ced6; stroke-width: 1.5; }
+  .client { fill: #f2f7ff; stroke: #2563eb; }
+  .server { fill: #f7f8fa; stroke: #6b7280; stroke-dasharray: 6 4; }
+  .layer { fill: #ffffff; stroke: #d5d9e0; }
+  .core { fill: #fff8eb; stroke: #d39a2c; }
+  .db { fill: #eef8f0; stroke: #2e7d32; }
+  .title { font-size: 20px; font-weight: 700; fill: #1f2328; }
+  .h { font-size: 15px; font-weight: 700; fill: #1f2328; }
+  .t { font-size: 13px; fill: #374151; }
+  .s { font-size: 12px; fill: #6b7280; }
+  .tag { font-size: 12px; font-weight: 600; }
+  .line { stroke: #4b5563; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+  .push { stroke: #c62828; stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowRed); }
+</style>
+</head>
+<body>
+<svg width="1400" height="900" viewBox="0 0 1400 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4b5563"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c62828"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="44" class="title">Caro Online · Kiến trúc Client–Server</text>
+  <text x="40" y="68" class="s">Một server Spring Boot (monolith) phục vụ hai loại client bằng cùng một giao thức JSON {"type","reqId","data"}</text>
+
+  <!-- legend -->
+  <path d="M40 120 L90 120" class="line"/>
+  <text x="100" y="124" class="s">yêu cầu từ client</text>
+  <path d="M40 146 L90 146" class="push"/>
+  <text x="100" y="150" class="s">server tự đẩy sự kiện</text>
+  <text x="40" y="176" class="s">ROOM_LIST, ONLINE_USERS,</text>
+  <text x="40" y="194" class="s">MOVE_APPLIED, MATCH_END, INVITED...</text>
+
+  <!-- clients -->
+  <rect x="400" y="96" width="260" height="128" rx="12" class="box client"/>
+  <text x="420" y="126" class="h">Client desktop</text>
+  <text x="420" y="150" class="t">Java Swing + FlatLaf</text>
+  <text x="420" y="172" class="s">Socket TCP, mỗi dòng một JSON</text>
+  <text x="420" y="192" class="s">tự kết nối lại bằng token (AUTH)</text>
+  <text x="420" y="212" class="s">lịch sử, BXH cũng lấy qua socket</text>
+
+  <rect x="690" y="96" width="390" height="128" rx="12" class="box client"/>
+  <text x="710" y="126" class="h">Client web</text>
+  <text x="710" y="150" class="t">React + TypeScript (Vite), chạy trên trình duyệt</text>
+  <text x="710" y="172" class="s">WebSocket /ws: sảnh và trận đấu</text>
+  <text x="710" y="192" class="s">REST /api: đăng nhập, lịch sử, bảng xếp hạng, quản trị</text>
+  <text x="710" y="212" class="s">nginx :5173 phục vụ trang, chuyển /api và /ws tới server</text>
+
+  <!-- server -->
+  <rect x="380" y="300" width="720" height="580" rx="14" class="box server"/>
+  <text x="400" y="862" class="s">Spring Boot server (monolith) · Java 21, virtual threads</text>
+
+  <rect x="418" y="340" width="200" height="54" rx="8" class="box"/>
+  <text x="432" y="363" class="t">TcpServer :9090</text>
+  <text x="432" y="382" class="s">1 virtual thread / kết nối</text>
+  <rect x="636" y="340" width="200" height="54" rx="8" class="box"/>
+  <text x="650" y="363" class="t">GameWebSocketHandler /ws</text>
+  <text x="650" y="382" class="s">WebSocket thuần, không STOMP</text>
+  <rect x="854" y="340" width="208" height="54" rx="8" class="box"/>
+  <text x="868" y="363" class="t">REST Controllers /api</text>
+  <text x="868" y="382" class="s">Spring Security + JWT</text>
+
+  <rect x="400" y="420" width="680" height="78" rx="10" class="box layer"/>
+  <text x="418" y="446" class="h">MessageDispatcher · SessionRegistry · HeartbeatMonitor</text>
+  <text x="418" y="468" class="s">phân tích envelope, khớp reqId → OK/ERROR · mỗi tài khoản một phiên · PING 10 giây, im lặng 30 giây thì đóng</text>
+  <text x="418" y="486" class="s">gửi bất đồng bộ: mỗi phiên có hàng đợi riêng + một writer thread, nên logic game không bao giờ bị chặn</text>
+
+  <rect x="400" y="518" width="330" height="152" rx="10" class="box core"/>
+  <text x="418" y="544" class="h">LobbyService (1 khóa lobby)</text>
+  <text x="418" y="568" class="t">phòng: tạo / vào / rời</text>
+  <text x="418" y="590" class="t">danh sách online · ghép trận theo Elo</text>
+  <text x="418" y="612" class="t">lời mời · chơi lại (đổi quân)</text>
+  <text x="418" y="634" class="t">mất kết nối / kết nối lại</text>
+  <text x="418" y="656" class="s">thứ tự khóa: lobby → match</text>
+
+  <rect x="750" y="518" width="330" height="152" rx="10" class="box core"/>
+  <text x="768" y="544" class="h">GameMatch (khóa theo từng trận)</text>
+  <text x="768" y="568" class="t">kiểm tra nước đi, 5 quân thắng</text>
+  <text x="768" y="590" class="t">đồng hồ 30 giây/lượt</text>
+  <text x="768" y="612" class="t">tạm dừng, chờ kết nối lại 30 giây</text>
+  <text x="768" y="634" class="t">Elo K=32, kết thúc đúng 1 lần</text>
+  <text x="768" y="656" class="s">server là nguồn sự thật</text>
+
+  <rect x="400" y="690" width="680" height="66" rx="10" class="box layer"/>
+  <text x="418" y="716" class="h">AuthService · PlayerQueryService · AdminService · MatchPersistenceService</text>
+  <text x="418" y="740" class="s">đăng ký/đăng nhập (BCrypt) · hồ sơ, lịch sử, replay, bảng xếp hạng · khóa tài khoản · lưu trận + nước đi trong 1 transaction</text>
+
+  <rect x="400" y="776" width="680" height="56" rx="10" class="box layer"/>
+  <text x="418" y="800" class="h">Spring Data JPA + Flyway</text>
+  <text x="418" y="820" class="s">schema do migration quản lý (V1__init.sql), Hibernate chỉ validate</text>
+
+  <path d="M740 394 L740 420" class="line"/>
+  <path d="M565 498 L565 518" class="line"/>
+  <path d="M730 594 L750 594" class="line"/>
+  <path d="M740 670 L740 690" class="line"/>
+  <path d="M740 756 L740 776" class="line"/>
+
+  <!-- client <-> server, drawn last so nothing covers them -->
+  <path d="M490 224 L490 338" class="line"/>
+  <path d="M580 338 L580 226" class="push"/>
+  <text x="498" y="268" class="tag" fill="#2563eb">TCP :9090</text>
+  <path d="M720 224 L720 338" class="line"/>
+  <path d="M800 338 L800 226" class="push"/>
+  <text x="728" y="268" class="tag" fill="#2563eb">WebSocket</text>
+  <path d="M958 224 L958 338" class="line"/>
+  <text x="966" y="268" class="tag" fill="#2563eb">HTTP REST</text>
+  <text x="590" y="250" class="tag" fill="#c62828">push</text>
+  <text x="810" y="250" class="tag" fill="#c62828">push</text>
+
+  <!-- right column -->
+  <rect x="1160" y="96" width="200" height="170" rx="12" class="box"/>
+  <text x="1180" y="126" class="h">Docker Compose</text>
+  <text x="1180" y="152" class="t">postgres :5432</text>
+  <text x="1180" y="174" class="t">server :8080 / :9090</text>
+  <text x="1180" y="196" class="t">web (nginx) :5173</text>
+  <text x="1180" y="228" class="s">docker compose up --build</text>
+  <text x="1180" y="248" class="s">chạy toàn bộ hệ thống</text>
+
+  <rect x="1160" y="700" width="200" height="132" rx="12" class="box db"/>
+  <text x="1180" y="730" class="h">PostgreSQL 17</text>
+  <text x="1180" y="756" class="t">users</text>
+  <text x="1180" y="778" class="t">matches</text>
+  <text x="1180" y="800" class="t">match_moves</text>
+  <path d="M1080 804 L1160 784" class="line"/>
+</svg>
+</body>
+</html>
