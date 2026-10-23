@@ -1,0 +1,46 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: caro-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/caro}
+    username: ${DB_USERNAME:caro}
+    password: ${DB_PASSWORD:caro}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # schema is owned by Flyway (src/main/resources/db/migration)
+  flyway:
+    enabled: true
+  threads:
+    virtual:
+      enabled: true
+
+caro:
+  tcp:
+    port: ${TCP_PORT:9090}
+    max-line-length: 8192        # bytes per JSON line (protects against huge frames)
+    max-outbound-queue: 1000     # messages buffered per client before it is considered too slow
+  game:
+    board-size: 15
+    win-length: 5
+    turn-time: 30s
+    reconnect-grace: 30s
+  heartbeat:
+    idle-timeout: 30s            # close a session if nothing was received for this long
+    check-interval: 5s
+  jwt:
+    # HS256 needs >= 32 bytes. Override with env JWT_SECRET in any shared deployment.
+    secret: ${JWT_SECRET:change-me-caro-online-dev-secret-key-0123456789}
+    ttl: 24h
+  admin:
+    username: ${ADMIN_USERNAME:admin}
+    password: ${ADMIN_PASSWORD:admin123}
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+
+logging:
+  level:
+    com.caro: INFO

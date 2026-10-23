@@ -1,0 +1,11 @@
+# Tests run against in-memory H2 (PostgreSQL mode), so `mvn test` works without Docker.
+spring:
+  datasource:
+    url: jdbc:h2:mem:caro;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+caro:
+  tcp:
+    port: 0   # random free port, see TcpServer.getLocalPort()
