@@ -52,6 +52,26 @@ public class SessionRegistry implements Notifier {
         return user != null && byUser.remove(user.id(), session);
     }
 
+    /**
+     * Sends KICKED to the user's active session, then closes it. The disconnect is then handled like any other
+     * (a running match is paused and waits for the reconnect grace period).
+     *
+     * @return false if the user was not online
+     */
+    public boolean kick(long userId, String reason) {
+        ClientSession session = byUser.get(userId);
+        if (session == null) {
+            return false;
+        }
+        kick(session, reason);
+        return true;
+    }
+
+    void kick(ClientSession session, String reason) {
+        send(session, ServerMessageType.KICKED, null, Map.of("reason", reason));
+        session.closeAfterFlush();
+    }
+
     public boolean isOnline(long userId) {
         return byUser.containsKey(userId);
     }

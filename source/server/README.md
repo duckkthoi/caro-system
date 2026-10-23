@@ -6,7 +6,7 @@ Game server của hệ thống **Caro Online**. Đây là một ứng dụng Spr
 |---|---|---|
 | `9090` | **TCP thuần**, mỗi dòng một JSON | Client desktop (bản Socket) |
 | `8080` `/ws` | **WebSocket**, mỗi frame một JSON | Client Web |
-| `8080` `/api/**` | **REST** (JSON, JWT) | Đăng ký/đăng nhập; sau này có thêm lịch sử, bảng xếp hạng, admin |
+| `8080` `/api/**` | **REST** (JSON, JWT) | Đăng ký/đăng nhập, hồ sơ, lịch sử đấu, bảng xếp hạng, quản trị (admin) |
 
 Hai cổng game dùng **chung một lõi xử lý**, nên người chơi desktop đấu được với người chơi Web trong cùng một trận.
 
@@ -85,6 +85,8 @@ WS  /ws   ─► GameWebSocketHandler┘        │               LobbyService �
                                    SessionRegistry ◄───────────┴── (push sự kiện)
                                                                                │ kết thúc trận
 REST /api ─► AuthController ─► AuthService                         MatchPersistenceService ─► PostgreSQL
+          ─► PlayerController ─► PlayerQueryService ◄── (GET_PROFILE, GET_HISTORY... từ MessageDispatcher)
+          ─► AdminController  ─► AdminService ─► SessionRegistry.kick() khi khóa tài khoản
 ```
 
 | Package | Nội dung |
@@ -95,6 +97,8 @@ REST /api ─► AuthController ─► AuthService                         Match
 | `lobby` | Phòng chờ: tạo, vào, rời phòng; bắt đầu trận; xử lý mất kết nối và kết nối lại ở mức phòng |
 | `match` | `GameMatch` (trạng thái trận trong RAM, đồng hồ lượt, chờ kết nối lại), lưu kết quả xuống DB |
 | `game` | Java thuần: `Board`, `RuleEngine` (kiểm tra 5 quân), `Elo` |
+| `player` | Đọc dữ liệu đã lưu: hồ sơ, thống kê, lịch sử, xem lại trận, bảng xếp hạng. Dùng chung cho REST và socket |
+| `admin` | `/api/admin/**`: thống kê hệ thống, tìm/khóa/mở khóa tài khoản, xem phòng và trận |
 | `auth`, `user` | Đăng ký, đăng nhập, JWT, entity `User` |
 | `config`, `common` | Cấu hình Spring, mã lỗi, xử lý lỗi REST |
 
@@ -115,6 +119,11 @@ REST /api ─► AuthController ─► AuthService                         Match
 6. **Heartbeat.** TCP có thể mất rất lâu mới phát hiện được peer đã biến mất. Vì vậy client phải gửi `PING`
    mỗi 10 giây, và phiên nào im lặng quá 30 giây sẽ bị đóng.
 7. **Mỗi tài khoản một phiên.** Đăng nhập lại sẽ đá phiên cũ. Đây cũng chính là cơ chế kết nối lại.
+8. **REST và socket dùng chung một service đọc dữ liệu.** `PlayerQueryService` trả về cùng một JSON cho
+   `GET /api/users/{id}/matches` và `GET_HISTORY`, nên client desktop không cần biết HTTP.
+9. **Khóa tài khoản an toàn khi đang có trận.** Admin khóa thì trạng thái được ghi DB trước (chỉ cập nhật cột
+   `status`, không ghi đè `rating`), sau đó mới đá phiên đang online. Trận đang chơi xử lý như mất kết nối.
+   JWT cũ cũng mất hiệu lực ngay, vì mỗi request đều đọc lại user từ DB.
 
 ---
 
@@ -131,6 +140,7 @@ Không cần Docker, vì test dùng H2 in-memory.
 | `EloTest` | Công thức Elo |
 | `GameMatchTest` | Lượt đi, ô không hợp lệ, thắng/hòa/đầu hàng/hết giờ, kết thúc đúng một lần, timer cũ bị bỏ qua, mất kết nối/kết nối lại/hủy trận |
 | `GameFlowIntegrationTest` | Chạy thật qua socket: **client TCP đấu với client WebSocket**, lưu DB và Elo, kết nối lại giữa trận, đăng nhập lần hai đá phiên cũ, lỗi giao thức |
+| `RestApiIntegrationTest` | Sau một trận: hồ sơ, lịch sử, xem lại trận, bảng xếp hạng (REST và socket ra cùng kết quả); mã lỗi REST 400/401/403/404; admin khóa người đang trong trận (bị `KICKED`, đối thủ nhận `OPPONENT_DISCONNECTED`, token cũ hết hiệu lực) rồi mở khóa |
 
 ---
 
@@ -142,7 +152,7 @@ Không cần Docker, vì test dùng H2 in-memory.
 3. Thêm một nhánh `case` trong `MessageDispatcher.handle()` và gọi sang service tương ứng.
 4. Viết test trong `GameFlowIntegrationTest`.
 
-**Thêm REST API** (lịch sử, bảng xếp hạng, admin): tạo controller dưới `/api/...`. Các route `/api/admin/**`
+**Thêm REST API**: tạo controller dưới `/api/...`. Các route `/api/admin/**`
 đã được chặn, chỉ cho phép role `ADMIN`. Lấy người đang đăng nhập bằng `@AuthenticationPrincipal AuthenticatedUser me`.
 Dữ liệu trận nằm ở bảng `matches` và `match_moves` (entity `MatchRecord`).
 

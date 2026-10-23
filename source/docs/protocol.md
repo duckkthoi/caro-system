@@ -14,16 +14,29 @@
 TCP là một dòng byte liên tục (stream), không có khái niệm "gói tin". Vì vậy cần ký tự `\n` để
 đánh dấu ranh giới giữa các thông điệp. Nhờ cách này có thể thử giao thức bằng `telnet`/`ncat` (xem mục 7).
 
-Ngoài giao thức game, server còn có REST API (dùng chủ yếu cho Web):
+Ngoài giao thức game, server còn có REST API (dùng chủ yếu cho Web). Trừ `register`, `login` và `health`,
+mọi endpoint đều cần header `Authorization: Bearer <token>`.
 
-| Endpoint | Method | Body | Trả về |
+| Endpoint | Method | Tham số / Body | Trả về |
 |---|---|---|---|
 | `/api/auth/register` | POST | `{"username","password","displayName"?}` | `201` + `UserInfo` |
 | `/api/auth/login` | POST | `{"username","password"}` | `{"token","user": UserInfo}` |
-| `/api/auth/me` | GET | Header `Authorization: Bearer <token>` | `UserInfo` |
+| `/api/auth/me` | GET | (không có) | `UserInfo` |
 | `/api/health` | GET | (không có) | `{"status":"ok","onlineUsers","rooms"}` |
+| `/api/users/{id}` | GET | (không có) | `Profile`: hồ sơ, thống kê, hạng |
+| `/api/users/{id}/matches` | GET | `?page&size` | `Page<HistoryItem>`: lịch sử đấu, mới nhất trước |
+| `/api/matches/{matchId}` | GET | (không có) | `MatchDetail`: toàn bộ nước đi để xem lại |
+| `/api/leaderboard` | GET | `?page&size` | `Page<LeaderboardEntry>` |
+| `/api/admin/stats` | GET | (không có) | `SystemStats` |
+| `/api/admin/users` | GET | `?q&page&size` (`q`: tìm theo username/tên hiển thị) | `Page<AdminUserView>` |
+| `/api/admin/users/{id}/lock` | POST | (không có) | `AdminUserView`. Người đang online nhận `KICKED` (`ACCOUNT_LOCKED`) |
+| `/api/admin/users/{id}/unlock` | POST | (không có) | `AdminUserView` |
+| `/api/admin/rooms` | GET | (không có) | `[RoomInfo]`: các phòng đang mở |
+| `/api/admin/matches` | GET | `?page&size` | `Page<MatchSummary>`: mọi trận đã lưu |
 
-Lỗi REST có dạng: `{"code": "<ERROR_CODE>", "message": "..."}`.
+- `/api/admin/**` chỉ dành cho role `ADMIN`, người khác nhận `403 FORBIDDEN`.
+- Phân trang: `page` bắt đầu từ `0` (mặc định `0`), `size` từ `1` đến `100` (mặc định `20`).
+- Lỗi REST có dạng `{"code": "<ERROR_CODE>", "message": "..."}`, HTTP status đi theo mã lỗi (mục 6).
 
 ## 2. Phong bì thông điệp (envelope)
 
@@ -64,6 +77,13 @@ trước khi đăng nhập sẽ nhận lỗi `UNAUTHORIZED`.
 | `LEAVE_ROOM` | (không có) | `{}` | Rời phòng khi trận đang diễn ra tính là đầu hàng |
 | `MOVE` | `{"matchId","x","y"}` | `{"moveNo"}` | Kết quả của nước đi được gửi qua sự kiện `MOVE_APPLIED` |
 | `RESIGN` | `{"matchId"}` | `{}` | |
+| `GET_PROFILE` | `{"userId"?}` | `Profile` | Bỏ `userId` để xem của chính mình |
+| `GET_HISTORY` | `{"userId"?,"page"?,"size"?}` | `Page<HistoryItem>` | Như `GET /api/users/{id}/matches` |
+| `GET_MATCH` | `{"matchId"}` | `MatchDetail` | Trận đã kết thúc và đã lưu |
+| `GET_LEADERBOARD` | `{"page"?,"size"?}` | `Page<LeaderboardEntry>` | |
+
+Bốn thông điệp `GET_*` cuối trả về **đúng cùng JSON** với endpoint REST tương ứng, để client desktop
+lấy được lịch sử, bảng xếp hạng... chỉ qua socket mà không cần gọi HTTP.
 
 Sau khi `LOGIN`/`AUTH` thành công, nếu người dùng đang ở trong một phòng hoặc trận (trường hợp kết nối lại),
 server tự gửi thêm `ROOM_UPDATE` và `MATCH_STATE`.
@@ -134,23 +154,81 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
 }
 ```
 
+Các kiểu dưới đây đọc từ database (lịch sử, xếp hạng, admin). Thời điểm được ghi theo chuỗi ISO-8601 UTC,
+ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline` trong trận đang chơi, vốn dùng epoch ms).
+
+```jsonc
+// Page<T>: một trang của danh sách
+{"items": [T], "page": 0, "size": 20, "totalItems": 42, "totalPages": 3}
+
+// Profile
+{
+  "player": PlayerInfo,
+  "online": true,
+  "rank": 3,                     // null với admin hoặc tài khoản bị khóa (không có trên bảng xếp hạng)
+  "stats": {"played": 10, "wins": 6, "losses": 3, "draws": 1, "winRate": 60.0},  // không tính trận ABORTED
+  "joinedAt": "2026-10-01T08:00:00Z"
+}
+
+// HistoryItem: một dòng lịch sử, nhìn từ phía người chơi được hỏi
+{
+  "matchId": "6f1c...",
+  "opponent": PlayerInfo,        // rating là rating hiện tại, không phải lúc chơi
+  "mark": "X",                   // quân người này cầm
+  "outcome": "WIN",              // WIN | LOSS | DRAW | ABORTED
+  "reason": "FIVE_IN_ROW",
+  "ratingChange": 16,            // điểm người này nhận được
+  "totalMoves": 9,
+  "startedAt": "...", "endedAt": "..."
+}
+
+// LeaderboardEntry: chỉ gồm người chơi (PLAYER) đang hoạt động. Bằng điểm thì cùng hạng: 1, 2, 2, 4...
+{"rank": 1, "player": PlayerInfo, "online": false}
+
+// MatchSummary: một trận đã lưu, trung lập (không theo phía nào)
+{
+  "matchId": "6f1c...", "roomId": "R1",
+  "playerX": PlayerInfo, "playerO": PlayerInfo,
+  "result": "X_WIN", "reason": "FIVE_IN_ROW", "winnerId": 1,
+  "ratingChange": {"X": 16, "O": -16},
+  "totalMoves": 9, "startedAt": "...", "endedAt": "..."
+}
+
+// MatchDetail: đủ để client phát lại (replay) ván cờ
+{
+  "match": MatchSummary,
+  "winLine": [[3,7],[4,7],[5,7],[6,7],[7,7]],   // null nếu reason khác FIVE_IN_ROW
+  "moves": [{"moveNo": 1, "mark": "X", "x": 7, "y": 7, "playedAt": "..."}, ...]
+}
+
+// AdminUserView
+{"id": 2, "username": "bob", "displayName": "Bob", "role": "PLAYER", "status": "ACTIVE",
+ "rating": 984, "createdAt": "...", "online": true}
+
+// SystemStats
+{"totalUsers": 12, "lockedUsers": 1, "totalMatches": 30, "matchesLast24h": 5,
+ "onlineUsers": 4, "rooms": 2, "activeMatches": 1}
+```
+
 ## 6. Mã lỗi
 
 | Mã | Khi nào |
 |---|---|
 | `BAD_REQUEST` | JSON sai cú pháp, thiếu `type`, sai kiểu dữ liệu |
 | `UNKNOWN_TYPE` | `type` không được hỗ trợ |
+| `NOT_FOUND` | (REST) Đường dẫn không tồn tại |
 | `UNAUTHORIZED` | Chưa đăng nhập, hoặc token sai/hết hạn |
 | `ALREADY_AUTHENTICATED` | Gửi `LOGIN`/`AUTH` khi phiên đã đăng nhập |
 | `VALIDATION_ERROR` | Dữ liệu không hợp lệ (username, password, tên phòng...) |
 | `USERNAME_TAKEN` | Username đã tồn tại |
 | `INVALID_CREDENTIALS` | Sai username hoặc mật khẩu |
 | `ACCOUNT_LOCKED` | Tài khoản bị khóa |
+| `USER_NOT_FOUND` | `userId` không tồn tại |
 | `ALREADY_IN_ROOM` | Tạo hoặc vào phòng khi đang ở một phòng khác |
 | `NOT_IN_ROOM` | Rời phòng khi không ở phòng nào |
 | `ROOM_NOT_FOUND` | Phòng không tồn tại |
 | `ROOM_FULL` | Phòng đã đủ người hoặc không ở trạng thái `WAITING` |
-| `MATCH_NOT_FOUND` | `matchId` không phải trận hiện tại của người gửi |
+| `MATCH_NOT_FOUND` | `matchId` không phải trận hiện tại của người gửi (`MOVE`, `RESIGN`), hoặc không có trận đã lưu nào có id đó (`GET_MATCH`) |
 | `MATCH_NOT_IN_PROGRESS` | Trận đã kết thúc hoặc đang tạm dừng |
 | `NOT_YOUR_TURN` | Chưa đến lượt |
 | `INVALID_POSITION` | Tọa độ nằm ngoài bàn cờ |

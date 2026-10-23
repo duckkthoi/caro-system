@@ -73,6 +73,12 @@ public class LobbyService implements MatchEndListener {
         }
     }
 
+    public int activeMatchCount() {
+        synchronized (lock) {
+            return (int) rooms.values().stream().filter(r -> r.status() == RoomStatus.PLAYING).count();
+        }
+    }
+
     public RoomInfo createRoom(long userId, String rawName) {
         PlayerInfo me = loadPlayer(userId);
         String name = rawName == null || rawName.isBlank() ? "Phòng của " + me.displayName() : rawName.trim();

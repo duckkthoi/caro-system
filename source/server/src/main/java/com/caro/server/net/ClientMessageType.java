@@ -13,7 +13,11 @@ public enum ClientMessageType {
     JOIN_ROOM(true),
     LEAVE_ROOM(true),
     MOVE(true),
-    RESIGN(true);
+    RESIGN(true),
+    GET_PROFILE(true),
+    GET_HISTORY(true),
+    GET_MATCH(true),
+    GET_LEADERBOARD(true);
 
     private final boolean requiresAuth;
 

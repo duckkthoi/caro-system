@@ -2,6 +2,7 @@ package com.caro.server.net;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import com.caro.server.common.AppException;
 import com.caro.server.common.ErrorBody;
 import com.caro.server.common.ErrorCode;
 import com.caro.server.lobby.LobbyService;
+import com.caro.server.player.PlayerQueryService;
 import com.caro.server.user.User;
 import com.caro.server.user.UserInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -50,16 +52,33 @@ public class MessageDispatcher {
     record ResignRequest(String matchId) {
     }
 
+    record ProfileRequest(Long userId) {
+    }
+
+    record HistoryRequest(Long userId, Integer page, Integer size) {
+    }
+
+    record MatchRequest(String matchId) {
+    }
+
+    record LeaderboardRequest(Integer page, Integer size) {
+    }
+
+    private static final int DEFAULT_PAGE_SIZE = 20;
+
     private final ObjectMapper mapper;
     private final SessionRegistry registry;
     private final AuthService auth;
     private final LobbyService lobby;
+    private final PlayerQueryService queries;
 
-    public MessageDispatcher(ObjectMapper mapper, SessionRegistry registry, AuthService auth, LobbyService lobby) {
+    public MessageDispatcher(ObjectMapper mapper, SessionRegistry registry, AuthService auth, LobbyService lobby,
+                             PlayerQueryService queries) {
         this.mapper = mapper;
         this.registry = registry;
         this.auth = auth;
         this.lobby = lobby;
+        this.queries = queries;
     }
 
     public void onOpen(ClientSession session) {
@@ -168,6 +187,27 @@ public class MessageDispatcher {
                 lobby.resign(userId(session), req.matchId());
                 ok(session, reqId, Map.of());
             }
+            // read-only queries: same JSON as the matching REST endpoints
+            case GET_PROFILE -> {
+                ProfileRequest req = read(data, ProfileRequest.class);
+                ok(session, reqId, queries.profile(req.userId() != null ? req.userId() : userId(session)));
+            }
+            case GET_HISTORY -> {
+                HistoryRequest req = read(data, HistoryRequest.class);
+                long target = req.userId() != null ? req.userId() : userId(session);
+                ok(session, reqId, queries.history(target, orDefault(req.page(), 0),
+                        orDefault(req.size(), DEFAULT_PAGE_SIZE)));
+            }
+            case GET_MATCH -> {
+                MatchRequest req = read(data, MatchRequest.class);
+                requireField(req.matchId(), "matchId");
+                ok(session, reqId, queries.match(parseUuid(req.matchId(), "matchId")));
+            }
+            case GET_LEADERBOARD -> {
+                LeaderboardRequest req = read(data, LeaderboardRequest.class);
+                ok(session, reqId, queries.leaderboard(orDefault(req.page(), 0),
+                        orDefault(req.size(), DEFAULT_PAGE_SIZE)));
+            }
         }
     }
 
@@ -179,8 +219,7 @@ public class MessageDispatcher {
         ClientSession previous = registry.bindUser(session, AuthenticatedUser.from(user));
         if (previous != null && previous != session) {
             log.info("{}: user {} logged in elsewhere ({}), kicking", previous.id(), user.getUsername(), session.id());
-            registry.send(previous, ServerMessageType.KICKED, null, Map.of("reason", "LOGGED_IN_ELSEWHERE"));
-            previous.closeAfterFlush();
+            registry.kick(previous, "LOGGED_IN_ELSEWHERE");
         }
         Map<String, Object> body = new LinkedHashMap<>();
         if (token != null) {
@@ -218,6 +257,18 @@ public class MessageDispatcher {
         if (value == null) {
             throw new AppException(ErrorCode.BAD_REQUEST, "Thiếu trường " + name);
         }
+    }
+
+    private static UUID parseUuid(String value, String name) {
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.BAD_REQUEST, name + " không hợp lệ");
+        }
+    }
+
+    private static int orDefault(Integer value, int fallback) {
+        return value != null ? value : fallback;
     }
 
     private static long userId(ClientSession session) {
