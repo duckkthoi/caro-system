@@ -1,0 +1,21 @@
+# Java / Maven
+target/
+*.class
+*.log
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node / web client
+node_modules/
+dist/
+.vite/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+
+# Local secrets
+.env
+.env.local

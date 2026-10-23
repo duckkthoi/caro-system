@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings, otherwise they fail inside Linux containers.
+*.sh   text eol=lf
+mvnw   text eol=lf
+*.cmd  text eol=crlf

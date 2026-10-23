@@ -1,0 +1,35 @@
+# Development:   docker compose up -d postgres      (then run the server from the IDE or ./mvnw)
+# Full stack:    docker compose up --build
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: caro
+      POSTGRES_USER: caro
+      POSTGRES_PASSWORD: caro
+    ports:
+      - "5432:5432"
+    volumes:
+      - caro-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caro -d caro"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build: ./server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/caro
+      DB_USERNAME: caro
+      DB_PASSWORD: caro
+      JWT_SECRET: ${JWT_SECRET:-change-me-caro-online-dev-secret-key-0123456789}
+    ports:
+      - "8080:8080"   # REST + WebSocket
+      - "9090:9090"   # TCP game protocol
+
+volumes:
+  caro-db:

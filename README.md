@@ -1,6 +1,6 @@
 # BÀI TẬP LỚN: LẬP TRÌNH MẠNG  
 
-## [Tên dự án của nhóm]
+## Caro Online: Hệ thống thi đấu cờ ca rô trực tuyến (Client–Server)
 
 > 📘 *Mẫu README này là khung hướng dẫn. Sinh viên chỉ cần điền thông tin của nhóm và nội dung dự án theo từng mục.*
 
@@ -15,76 +15,101 @@
 | 3 | Lê Văn C | 20IT003 | c@example.com | ... |
 
 **Tên nhóm:** Nhóm 01 – Lập trình mạng  
-**Chủ đề đã đăng ký:** (…)
+**Chủ đề đã đăng ký:** Hệ thống thi đấu cờ ca rô trực tuyến sử dụng mô hình Client–Server
 
 ---
 
 ## 🧠 MÔ TẢ HỆ THỐNG
 
-> Mô tả tổng quan hệ thống mà nhóm triển khai.
+Hai người chơi đấu cờ ca rô 15×15 qua mạng. **Server quyết định mọi thứ**: kiểm tra nước đi, xác định thắng/thua/hòa,
+tính điểm Elo, lưu lịch sử. Có hai loại client dùng **chung một giao thức JSON**:
 
-Ví dụ:
-> Hệ thống bao gồm **server** xử lý yêu cầu và **client** gửi yêu cầu đến server qua giao thức HTTP.  
-> Server cung cấp API cho phép tính toán đơn giản hoặc truyền dữ liệu.  
-> Client có thể là chương trình CLI, web hoặc ứng dụng desktop.
+- **Client desktop (bản Socket)** kết nối bằng **TCP thuần** (cổng 9090), mỗi thông điệp là một dòng JSON.
+- **Client Web** kết nối bằng **WebSocket** (`/ws`) cho phần chơi, và **REST** (`/api`) cho tài khoản, lịch sử,
+  bảng xếp hạng, quản trị.
+
+Hai loại client có thể đấu với nhau trong cùng một trận.
 
 **Cấu trúc logic tổng quát:**
 ```
-client  <-->  server  <-->  (database / service nếu có)
+Desktop client ──TCP :9090──┐
+                            ├──►  Spring Boot server  ──►  PostgreSQL
+Web client ──WS /ws + REST──┘     (một ứng dụng monolith)
 ```
 
 **Sơ đồ hệ thống:**
 
 ![System Diagram](./statics/diagram.png)
 
+Luật chơi chi tiết: [`source/docs/rules.md`](source/docs/rules.md)
+
 ---
 
 ## ⚙️ CÔNG NGHỆ SỬ DỤNG
 
-> Liệt kê công nghệ, framework, thư viện chính mà nhóm sử dụng.
-
 | Thành phần | Công nghệ | Ghi chú |
 |------------|-----------|---------|
-| Server | Python 3.11 + Flask | REST API |
-| Client | Node.js 20 + Axios | Giao tiếp HTTP |
-| Database | SQLite | Lưu trữ dữ liệu tạm thời |
-| Triển khai | Docker | (nếu có) |
+| Server | Java 21 + Spring Boot 3.5 | TCP (`ServerSocket` + virtual threads), WebSocket, REST, Spring Security + JWT |
+| Database | PostgreSQL 17 + Flyway | Schema quản lý bằng migration |
+| Client desktop | (đang phát triển) | Kết nối TCP |
+| Client Web | (đang phát triển) React + TypeScript | WebSocket + REST |
+| Triển khai | Docker Compose | `postgres` + `server` |
 
 ---
 
 ## 🚀 HƯỚNG DẪN CHẠY DỰ ÁN
 
+Yêu cầu: Docker. Nếu muốn chạy server ngoài Docker thì cần thêm JDK 21+ (không cần cài Maven).
+
 ### 1. Clone repository
 ```bash
 git clone <repository-url>
-cd assignment-network-project
+cd jnp-project-starter
 ```
 
 ### 2. Chạy server
 ```bash
-cd source/server
-# Các lệnh để khởi động server
+cd source
+docker compose up --build          # PostgreSQL + server: REST/WS :8080, TCP :9090
 ```
+Hoặc khi dev: `docker compose up -d postgres`, sau đó `cd server && ./mvnw spring-boot:run`.
+Xem chi tiết trong [`source/server/README.md`](source/server/README.md).
 
 ### 3. Chạy client
 ```bash
 cd source/client
-# Các lệnh để khởi động client
+# (sẽ bổ sung khi có client desktop và web)
 ```
 
 ### 4. Kiểm thử nhanh
 ```bash
-# Các lệnh test
+curl http://localhost:8080/api/health          # {"status":"ok",...}
+cd source/server && ./mvnw test                # unit test + integration test (TCP và WebSocket)
 ```
 
 ---
 
 ## 🔗 GIAO TIẾP (GIAO THỨC SỬ DỤNG)
 
-| Endpoint | Protocol | Method | Input | Output |
-|----------|----------|--------|-------|--------|
-| `/health` | HTTP/1.1 | GET | — | `{"status": "ok"}` |
-| `/compute` | HTTP/1.1 | POST | `{"task":"sum","payload":[1,2,3]}` | `{"result":6}` |
+Đặc tả đầy đủ: [`source/docs/protocol.md`](source/docs/protocol.md).
+
+| Kênh | Protocol | Định dạng |
+|------|----------|-----------|
+| `host:9090` | TCP | Mỗi dòng một JSON `{"type","reqId","data"}`, kết thúc bằng `
+` |
+| `ws://host:8080/ws` | WebSocket | Mỗi text frame một JSON, cùng định dạng với TCP |
+| `http://host:8080/api` | HTTP/1.1 REST | JSON, xác thực bằng `Authorization: Bearer <JWT>` |
+
+| Endpoint / Message | Protocol | Input | Output |
+|----------|----------|-------|--------|
+| `GET /api/health` | HTTP | (không có) | `{"status":"ok","onlineUsers","rooms"}` |
+| `POST /api/auth/register` | HTTP | `{"username","password","displayName"?}` | `UserInfo` |
+| `POST /api/auth/login` | HTTP | `{"username","password"}` | `{"token","user"}` |
+| `LOGIN` / `AUTH` | TCP/WS | `{"username","password"}` / `{"token"}` | `OK {"token"?,"user"}` |
+| `CREATE_ROOM` / `JOIN_ROOM` / `LEAVE_ROOM` | TCP/WS | `{"name"?}` / `{"roomId"}` / (không có) | `OK {"room"}` cùng các sự kiện `ROOM_LIST`, `ROOM_UPDATE` |
+| `MOVE` | TCP/WS | `{"matchId","x","y"}` | `OK {"moveNo"}` cùng các sự kiện `MOVE_APPLIED`, `MATCH_END` |
+| `RESIGN` | TCP/WS | `{"matchId"}` | `OK` cùng sự kiện `MATCH_END` |
+| `PING` | TCP/WS | (không có) | `PONG {"serverTime"}` (heartbeat mỗi 10 giây) |
 
 ---
 
@@ -97,22 +122,28 @@ cd source/client
 ---
 
 ## 🧩 CẤU TRÚC DỰ ÁN
+
 ```
-assignment-network-project/
+jnp-project-starter/
 ├── README.md
 ├── INSTRUCTION.md
-├── statics/
-│   ├── diagram.png
-│   └── dataset_sample.csv
+├── statics/                     # hình ảnh, sơ đồ
 └── source/
     ├── .gitignore
-    ├── client/
-    │   ├── README.md
-    │   └── (client source files...)
-    ├── server/
-    │   ├── README.md
-    │   └── (server source files...)
-    └── (các module khác nếu có)
+    ├── docker-compose.yml       # postgres + server
+    ├── docs/
+    │   ├── protocol.md          # đặc tả giao thức TCP/WebSocket/REST
+    │   └── rules.md             # luật chơi và quy tắc nghiệp vụ
+    ├── server/                  # Spring Boot (xem server/README.md)
+    │   ├── pom.xml, mvnw, Dockerfile
+    │   └── src/main/java/com/caro/server/
+    │       ├── net/             # lõi giao thức, net/tcp, net/ws
+    │       ├── lobby/           # phòng chờ
+    │       ├── match/           # trận đấu và lưu kết quả
+    │       ├── game/            # bàn cờ, luật thắng, Elo
+    │       ├── auth/, user/     # tài khoản, JWT
+    │       └── config/, common/
+    └── client/                  # client desktop và web (đang phát triển)
 ```
 
 ---
