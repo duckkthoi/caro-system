@@ -1,5 +1,6 @@
-# Development:   docker compose up -d postgres      (then run the server from the IDE or ./mvnw)
-# Full stack:    docker compose up --build
+# Full stack:    docker compose up --build    -> web http://localhost:5173, REST/WS :8080, TCP :9090
+# Development:   docker compose up -d postgres      (then run the server from the IDE or ./mvnw,
+#                and the web client with `npm run dev` in client/web)
 services:
   postgres:
     image: postgres:17-alpine
@@ -30,6 +31,13 @@ services:
     ports:
       - "8080:8080"   # REST + WebSocket
       - "9090:9090"   # TCP game protocol
+
+  web:
+    build: ./client/web
+    depends_on:
+      - server
+    ports:
+      - "5173:80"     # React app; nginx forwards /api and /ws to the server
 
 volumes:
   caro-db:
