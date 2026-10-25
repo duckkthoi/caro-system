@@ -17,5 +17,7 @@ public enum ServerMessageType {
     ONLINE_USERS,
     QUEUE_STATUS,
     INVITED,
-    INVITE_CLOSED
+    INVITE_CLOSED,
+    CHAT_MESSAGE,
+    SPECTATE_ENDED
 }

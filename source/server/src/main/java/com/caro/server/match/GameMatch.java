@@ -2,8 +2,10 @@ package com.caro.server.match;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +36,9 @@ import com.caro.server.user.PlayerInfo;
  * <p><b>End exactly once.</b> {@link #finish} flips the status to FINISHED under the lock and returns false
  * if it already was, so a move and a timeout racing each other can never produce two results.
  * The {@link MatchEndListener} is then called outside the lock.
+ *
+ * <p><b>Spectators</b> receive the same events as the players. A spectator is added together with their first
+ * snapshot under the same lock, so they never miss a move or see one twice.
  */
 public class GameMatch {
 
@@ -43,12 +48,14 @@ public class GameMatch {
     private final String roomId;
     private final PlayerInfo playerX;
     private final PlayerInfo playerO;
+    private final MatchOptions options;
     private final MatchRuntime rt;
     private final Board board;
 
     // ---- guarded by "this" ----
     private final List<PlayedMove> moves = new ArrayList<>();
     private final Set<Long> disconnected = new HashSet<>();
+    private final Set<Long> spectators = new LinkedHashSet<>();
     private MatchStatus status = MatchStatus.IN_PROGRESS;
     private Mark turn = Mark.X;
     private long turnDeadline;
@@ -61,12 +68,20 @@ public class GameMatch {
     private MatchResult result;
 
     public GameMatch(UUID id, String roomId, PlayerInfo playerX, PlayerInfo playerO, MatchRuntime runtime) {
+        this(id, roomId, playerX, playerO, MatchOptions.STANDARD, List.of(), runtime);
+    }
+
+    /** @param spectators people already watching the room; they get MATCH_START like the players */
+    public GameMatch(UUID id, String roomId, PlayerInfo playerX, PlayerInfo playerO, MatchOptions options,
+                     Collection<Long> spectators, MatchRuntime runtime) {
         this.id = id;
         this.roomId = roomId;
         this.playerX = playerX;
         this.playerO = playerO;
+        this.options = options;
         this.rt = runtime;
         this.board = new Board(runtime.settings().boardSize());
+        this.spectators.addAll(spectators);
     }
 
     // ------------------------------------------------------------------ player actions
@@ -75,8 +90,8 @@ public class GameMatch {
         synchronized (this) {
             startedAt = rt.clock().instant();
             restartTurnTimer(turnTimeMs());
-            for (PlayerInfo p : List.of(playerX, playerO)) {
-                rt.notifier().sendToUser(p.id(), ServerMessageType.MATCH_START, buildSnapshot(p.id()));
+            for (long userId : audience()) {
+                rt.notifier().sendToUser(userId, ServerMessageType.MATCH_START, buildSnapshot(userId));
             }
         }
         log.info("Match {} started in room {}: {} (X) vs {} (O)", id, roomId, playerX.username(), playerO.username());
@@ -105,14 +120,15 @@ public class GameMatch {
             moveNo = moves.size() + 1;
             moves.add(new PlayedMove(moveNo, userId, x, y, mark, rt.clock().instant()));
 
-            List<int[]> winLine = RuleEngine.findWinLine(board, x, y, rt.settings().winLength());
+            List<int[]> winLine = RuleEngine.findWinLine(board, x, y, rt.settings().winLength(),
+                    options.blockTwoEnds());
             boolean draw = winLine.isEmpty() && board.isFull();
             boolean over = !winLine.isEmpty() || draw;
             if (!over) {
                 turn = turn.opposite();
                 restartTurnTimer(turnTimeMs());
             }
-            notifyBoth(ServerMessageType.MOVE_APPLIED, new MoveApplied(id, moveNo, x, y, mark,
+            broadcast(ServerMessageType.MOVE_APPLIED, new MoveApplied(id, moveNo, x, y, mark,
                     over ? null : turn, over ? null : turnDeadline));
             if (over) {
                 ended = draw
@@ -169,7 +185,7 @@ public class GameMatch {
                 long graceDeadline = now() + graceMs;
                 graceTimer = rt.scheduler().schedule(
                         () -> safely(() -> onGraceExpired(userId)), graceMs, TimeUnit.MILLISECONDS);
-                rt.notifier().sendToUser(opponentOf(userId), ServerMessageType.OPPONENT_DISCONNECTED,
+                broadcastExcept(userId, ServerMessageType.OPPONENT_DISCONNECTED,
                         event("userId", userId, "graceDeadline", graceDeadline));
                 log.info("Match {}: user {} disconnected, waiting {} ms", id, userId, graceMs);
             }
@@ -187,12 +203,24 @@ public class GameMatch {
                 cancel(graceTimer);
                 status = MatchStatus.IN_PROGRESS;
                 restartTurnTimer(pausedTimeLeftMs);
-                rt.notifier().sendToUser(opponentOf(userId), ServerMessageType.OPPONENT_RECONNECTED,
+                broadcastExcept(userId, ServerMessageType.OPPONENT_RECONNECTED,
                         event("userId", userId, "turnDeadline", turnDeadline));
                 log.info("Match {}: user {} reconnected", id, userId);
             }
             rt.notifier().sendToUser(userId, ServerMessageType.MATCH_STATE, buildSnapshot(userId));
         }
+    }
+
+    // ------------------------------------------------------------------ spectators (docs/rules.md, section 10)
+
+    /** Starts sending the match events to this user, beginning with a full MATCH_STATE. */
+    public synchronized void addSpectator(long userId) {
+        spectators.add(userId);
+        rt.notifier().sendToUser(userId, ServerMessageType.MATCH_STATE, buildSnapshot(userId));
+    }
+
+    public synchronized void removeSpectator(long userId) {
+        spectators.remove(userId);
     }
 
     // ------------------------------------------------------------------ timers (package-private for tests)
@@ -243,6 +271,10 @@ public class GameMatch {
         return playerO;
     }
 
+    public MatchOptions options() {
+        return options;
+    }
+
     public boolean hasPlayer(long userId) {
         return markOf(userId) != null;
     }
@@ -286,7 +318,7 @@ public class GameMatch {
         cancel(turnTimer);
         cancel(graceTimer);
 
-        int deltaX = switch (type) {
+        int deltaX = !options.rated() ? 0 : switch (type) {
             case X_WIN -> Elo.deltaForX(playerX.rating(), playerO.rating(), 1.0);
             case O_WIN -> Elo.deltaForX(playerX.rating(), playerO.rating(), 0.0);
             case DRAW -> Elo.deltaForX(playerX.rating(), playerO.rating(), 0.5);
@@ -302,7 +334,7 @@ public class GameMatch {
         ratingChange.put("O", -deltaX);
         result = new MatchResult(id, type, reason, winnerId, winLine, ratingChange);
 
-        notifyBoth(ServerMessageType.MATCH_END, result);
+        broadcast(ServerMessageType.MATCH_END, result);
         log.info("Match {} finished: {} ({}) after {} moves", id, type, reason, moves.size());
         return true;
     }
@@ -314,7 +346,8 @@ public class GameMatch {
             case PAUSED -> pausedTimeLeftMs;
             case FINISHED -> 0;
         };
-        return new MatchState(id, roomId, board.size(), playerX, playerO, markOf(userId), status,
+        return new MatchState(id, roomId, board.size(), options.blockTwoEnds(), options.rated(), playerX, playerO,
+                markOf(userId), status,
                 status == MatchStatus.FINISHED ? null : turn,
                 moves.size(),
                 board.toRows(),
@@ -332,9 +365,28 @@ public class GameMatch {
                 () -> safely(() -> onTurnTimeout(generation)), delayMs, TimeUnit.MILLISECONDS);
     }
 
-    private void notifyBoth(ServerMessageType type, Object data) {
-        rt.notifier().sendToUser(playerX.id(), type, data);
-        rt.notifier().sendToUser(playerO.id(), type, data);
+    /** Both players, then the spectators. */
+    private List<Long> audience() {
+        List<Long> ids = new ArrayList<>(2 + spectators.size());
+        ids.add(playerX.id());
+        ids.add(playerO.id());
+        ids.addAll(spectators);
+        return ids;
+    }
+
+    private void broadcast(ServerMessageType type, Object data) {
+        for (long userId : audience()) {
+            rt.notifier().sendToUser(userId, type, data);
+        }
+    }
+
+    /** Everyone but the player the event is about. */
+    private void broadcastExcept(long skippedId, ServerMessageType type, Object data) {
+        for (long userId : audience()) {
+            if (userId != skippedId) {
+                rt.notifier().sendToUser(userId, type, data);
+            }
+        }
     }
 
     private Map<String, Object> event(String k1, Object v1, String k2, Object v2) {
@@ -361,10 +413,6 @@ public class GameMatch {
             return Mark.O;
         }
         return null;
-    }
-
-    private long opponentOf(long userId) {
-        return userId == playerX.id() ? playerO.id() : playerX.id();
     }
 
     private long turnTimeMs() {

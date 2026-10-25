@@ -11,3 +11,8 @@ caro:
     port: 0   # random free port, see TcpServer.getLocalPort()
   invite:
     timeout: 2s   # short, so the expiry can be tested
+  rate-limit:
+    burst: 1000       # tests fire requests faster than any person; RateLimitIntegrationTest checks the real limit
+    per-second: 1000
+  bot:
+    move-delay: 20ms

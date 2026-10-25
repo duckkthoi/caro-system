@@ -50,6 +50,9 @@ public class MatchRecord {
     @Column(name = "rating_change_o", nullable = false)
     private int ratingChangeO;
 
+    @Column(name = "block_two_ends", nullable = false)
+    private boolean blockTwoEnds;
+
     @Column(name = "total_moves", nullable = false)
     private int totalMoves;
 
@@ -80,6 +83,7 @@ public class MatchRecord {
         rec.endReason = r.reason();
         rec.ratingChangeX = r.ratingChangeX();
         rec.ratingChangeO = r.ratingChangeO();
+        rec.blockTwoEnds = match.options().blockTwoEnds();
         rec.startedAt = match.startedAt();
         rec.endedAt = match.endedAt();
         for (PlayedMove m : match.moves()) {
@@ -123,6 +127,10 @@ public class MatchRecord {
 
     public int getRatingChangeO() {
         return ratingChangeO;
+    }
+
+    public boolean isBlockTwoEnds() {
+        return blockTwoEnds;
     }
 
     public int getTotalMoves() {

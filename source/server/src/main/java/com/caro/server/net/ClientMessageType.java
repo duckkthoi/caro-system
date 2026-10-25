@@ -24,7 +24,10 @@ public enum ClientMessageType {
     INVITE(true),
     INVITE_REPLY(true),
     CANCEL_INVITE(true),
-    REMATCH(true);
+    REMATCH(true),
+    SPECTATE(true),
+    CHAT(true),
+    PLAY_BOT(true);
 
     private final boolean requiresAuth;
 

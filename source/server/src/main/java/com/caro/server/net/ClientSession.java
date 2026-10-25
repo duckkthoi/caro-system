@@ -36,6 +36,8 @@ public abstract class ClientSession {
     private final AtomicBoolean released = new AtomicBoolean();
     private volatile long lastSeenAt = System.currentTimeMillis();
     private volatile AuthenticatedUser user;
+    private volatile RateLimiter messageLimiter; // set by MessageDispatcher.onOpen
+    private volatile RateLimiter chatLimiter;
 
     protected ClientSession(String transport, String remoteAddress, int maxOutboundQueue) {
         this.id = transport + "-" + SEQ.incrementAndGet();
@@ -127,5 +129,18 @@ public abstract class ClientSession {
 
     void setUser(AuthenticatedUser user) {
         this.user = user;
+    }
+
+    void setRateLimiters(RateLimiter messages, RateLimiter chat) {
+        this.messageLimiter = messages;
+        this.chatLimiter = chat;
+    }
+
+    RateLimiter messageLimiter() {
+        return messageLimiter;
+    }
+
+    RateLimiter chatLimiter() {
+        return chatLimiter;
     }
 }

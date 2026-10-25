@@ -12,11 +12,11 @@
 | Số người chơi | 2: một người cầm `X`, một người cầm `O` |
 | Đi trước | `X` |
 | Điều kiện thắng | Có **từ 5 quân liên tiếp trở lên** cùng loại theo hàng ngang, hàng dọc hoặc một trong hai đường chéo |
-| Luật chặn hai đầu | **Không áp dụng** (5 quân bị chặn hai đầu vẫn thắng) |
+| Luật chặn hai đầu | **Mặc định không áp dụng** (5 quân bị chặn hai đầu vẫn thắng). Chủ phòng có thể bật khi tạo phòng (mục 9) |
 | Hòa | Bàn cờ kín (225 nước) mà không ai thắng |
 
 Một nước đi hợp lệ khi **tất cả** điều kiện sau đúng:
-1. Người gửi đã đăng nhập và là người chơi của trận đó (`matchId` đúng).
+1. Người gửi đã đăng nhập và là người chơi của trận đó (`matchId` đúng). Người xem (mục 10) không đi được.
 2. Trận đang ở trạng thái `IN_PROGRESS` (chưa kết thúc, không bị tạm dừng do đối thủ mất kết nối).
 3. Đang đến lượt của người gửi.
 4. Tọa độ nằm trong bàn cờ và ô đó còn trống.
@@ -28,7 +28,7 @@ những gì server gửi về và không tự đặt quân hay tự kết luận
 
 - Mỗi người chơi chỉ ở **tối đa một phòng** tại một thời điểm, và không thể vừa ở trong phòng vừa ở hàng chờ
   tìm trận (mục 8). Vào phòng bằng bất kỳ cách nào cũng tự rời hàng chờ.
-- Phòng có tối đa 2 người. Người tạo phòng là chủ phòng (host).
+- Phòng có tối đa 2 người chơi, cộng thêm tối đa 10 người xem (mục 10). Người tạo phòng là chủ phòng (host).
 - Khi người thứ hai vào phòng, **trận đấu tự động bắt đầu**.
 - Người tạo phòng cầm `X` ở ván đầu. Khi chơi lại (rematch), hai người đổi quân cho nhau.
 - Trạng thái phòng:
@@ -36,7 +36,7 @@ những gì server gửi về và không tự đặt quân hay tự kết luận
   - `PLAYING`: có 2 người và trận đang diễn ra.
   - `FINISHED`: trận vừa kết thúc, hai người vẫn ở trong phòng.
 - Khi một người rời phòng ở trạng thái `FINISHED`, người còn lại trở thành chủ phòng và phòng quay về `WAITING`.
-- Phòng không còn ai sẽ bị xóa.
+- Phòng không còn người chơi nào (không tính máy) sẽ bị xóa. Người xem của phòng đó tự động bị đưa ra ngoài.
 
 ## 3. Thời gian, đầu hàng, rời phòng
 
@@ -138,3 +138,64 @@ Server gửi lại danh sách cho mọi người mỗi khi có người vào/ra,
 - Mỗi người bấm chơi lại một lần. Khi **cả hai** đã bấm, trận mới bắt đầu và hai người **đổi quân** cho nhau.
 - Người kia nhìn thấy yêu cầu chơi lại qua `ROOM_UPDATE` (trường `rematchRequests`).
 - Không muốn chơi lại thì rời phòng. Khi một người rời phòng, các yêu cầu chơi lại bị xóa.
+
+## 9. Luật chặn hai đầu (tùy chọn theo phòng)
+
+- Khi tạo phòng (`CREATE_ROOM`) hoặc chơi với máy (`PLAY_BOT`), người chơi có thể bật `blockTwoEnds`. Mặc định là tắt.
+  Phòng do tìm trận nhanh hoặc lời mời tạo ra luôn dùng luật thường.
+- Khi bật: một dãy **từ 5 quân trở lên** chỉ thắng nếu **không** bị quân đối thủ chặn ở **cả hai đầu**.
+  "Bị chặn" nghĩa là ô ngay sau đầu dãy có quân của đối thủ. **Mép bàn cờ không tính là bị chặn.**
+- Ví dụ (người chơi X, `_` là ô trống, `|` là mép bàn):
+
+| Dãy | Luật thường | Chặn hai đầu |
+|---|---|---|
+| `O X X X X X _` | Thắng | Thắng (chỉ bị chặn một đầu) |
+| `O X X X X X O` | Thắng | **Không thắng**, trận tiếp tục |
+| `\| X X X X X O` | Thắng | Thắng (mép bàn không tính) |
+| `O X X X X X X O` | Thắng | **Không thắng** |
+
+- Luật áp dụng cho cả phòng: chơi lại (rematch) giữ nguyên luật. Luật được lưu cùng trận để xem lại cho đúng.
+
+## 10. Người xem (spectator)
+
+- Người không ở trong phòng nào với tư cách người chơi có thể **xem** bất kỳ phòng nào đang mở (`SPECTATE`).
+  Mỗi phòng tối đa **10 người xem**. Mỗi người chỉ xem một phòng tại một thời điểm, xem phòng khác thì tự rời phòng cũ.
+- Người xem thấy bàn cờ, đồng hồ và kết quả giống người chơi, nhưng **không** được đi, đầu hàng hay bấm chơi lại.
+- Người xem có thể chat (mục 11). Người xem không ảnh hưởng gì tới trận đấu hay trạng thái phòng.
+- Rời phòng đang xem bằng `LEAVE_ROOM`. Người xem cũng tự rời khi: tạo phòng, vào phòng, được ghép trận, chấp nhận
+  lời mời, chơi với máy, mất kết nối, hoặc khi phòng bị xóa (nhận `SPECTATE_ENDED`).
+- Người xem vẫn có thể vào hàng chờ tìm trận và được mời. Khi trận của chính mình bắt đầu thì tự rời phòng đang xem.
+- Người xem mất kết nối **không** được giữ chỗ: kết nối lại thì phải chọn xem lại.
+
+## 11. Chat trong phòng
+
+- Người chơi và người xem trong cùng một phòng có thể gửi tin nhắn cho nhau (`CHAT`).
+- Mỗi tin nhắn dài **1 đến 200 ký tự** sau khi bỏ khoảng trắng đầu/cuối. Ký tự điều khiển (xuống dòng, tab...) bị thay bằng dấu cách.
+- Server gửi tin nhắn tới mọi người đang ở trong phòng lúc đó, kể cả người gửi. Tin nhắn **không** được lưu vào DB,
+  người vào phòng sau không thấy tin nhắn cũ.
+- Client phải hiển thị tin nhắn dưới dạng văn bản thuần (không diễn giải HTML).
+- Chat bị giới hạn tần suất riêng (mục 13).
+
+## 12. Chơi với máy (bot)
+
+- Người chơi rảnh (không ở trong phòng nào) có thể chơi với máy (`PLAY_BOT`). Server tạo một phòng riêng, người chơi
+  cầm `X` ở ván đầu, trận bắt đầu ngay. Chơi lại thì máy luôn đồng ý ngay và hai bên đổi quân.
+- Hai mức: `EASY` (dễ) và `HARD` (khó). Máy đi sau khoảng **0,5 giây** kể từ lúc tới lượt.
+- Máy chạy bên trong server và chỉ nhìn thấy đúng những gì một client thấy (ảnh chụp trạng thái trận). Nước đi của máy
+  được kiểm tra bởi cùng một luật như người thật.
+- Trận với máy **không tính Elo** (`ratingChange` luôn là `0`) và **không lưu vào lịch sử**.
+- Các luật khác giữ nguyên: 30 giây/lượt, đầu hàng, rời phòng tính là thua, mất kết nối thì máy chờ 30 giây.
+- Phòng chơi với máy hiện trong danh sách phòng, người khác có thể vào xem nhưng không thể vào chơi.
+
+## 13. Giới hạn tần suất (rate limit)
+
+Mỗi kết nối có hai "xô token" (token bucket). Mỗi thông điệp lấy một token, token được nạp lại đều theo thời gian:
+
+| Loại | Áp dụng cho | Tối đa liên tiếp | Nạp lại |
+|---|---|---|---|
+| Chung | Mọi thông điệp trừ `PING` | 20 | 10 thông điệp/giây |
+| Chat | `CHAT` (tính thêm, ngoài xô chung) | 5 | 1 tin nhắn mỗi 2 giây |
+
+- Hết token thì thông điệp bị **bỏ qua** (không được xử lý) và client nhận lỗi `RATE_LIMITED`. Kết nối không bị đóng.
+- `PING` không bị giới hạn để heartbeat không bao giờ bị chặn.
+- Các con số trên cấu hình được trong `application.yml` (mục `caro.rate-limit.*`).

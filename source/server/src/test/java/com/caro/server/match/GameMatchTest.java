@@ -62,6 +62,16 @@ class GameMatchTest {
         return newMatch(15, Duration.ofSeconds(30));
     }
 
+    private GameMatch newMatch(MatchOptions options, List<Long> spectators) {
+        var settings = new CaroProperties.Game(15, 5, Duration.ofSeconds(30), Duration.ofSeconds(30));
+        var runtime = new MatchRuntime(settings, notifier, scheduler, m -> endedCount.incrementAndGet(),
+                Clock.systemUTC());
+        var match = new GameMatch(UUID.randomUUID(), "R1", new PlayerInfo(X, "alice", "Alice", 1000),
+                new PlayerInfo(O, "bob", "Bob", 1000), options, spectators, runtime);
+        match.start();
+        return match;
+    }
+
     private static void assertError(Runnable action, ErrorCode code) {
         assertThatThrownBy(action::run).isInstanceOf(AppException.class)
                 .satisfies(e -> assertThat(((AppException) e).code()).isEqualTo(code));
@@ -220,5 +230,62 @@ class GameMatchTest {
         assertThat(match.result().reason()).isEqualTo(EndReason.BOTH_DISCONNECTED);
         assertThat(match.result().ratingChangeX()).isZero();
         assertThat(endedCount).hasValue(1);
+    }
+
+    @Test
+    void spectatorsGetTheEventsButCannotPlay() {
+        long early = 3;
+        long late = 4;
+        GameMatch match = newMatch(MatchOptions.STANDARD, List.of(early));
+        MatchState start = (MatchState) events.stream()
+                .filter(e -> e.userId() == early && e.type() == ServerMessageType.MATCH_START)
+                .findFirst().orElseThrow().data();
+        assertThat(start.yourMark()).isNull();
+
+        match.move(X, 7, 7);
+        assertThat(count(early, ServerMessageType.MOVE_APPLIED)).isEqualTo(1);
+
+        match.addSpectator(late);
+        MatchState joined = (MatchState) events.stream()
+                .filter(e -> e.userId() == late && e.type() == ServerMessageType.MATCH_STATE)
+                .findFirst().orElseThrow().data();
+        assertThat(joined.moveCount()).isEqualTo(1);
+        assertThat(joined.yourMark()).isNull();
+
+        assertError(() -> match.move(late, 8, 8), ErrorCode.MATCH_NOT_FOUND);
+        assertError(() -> match.resign(early), ErrorCode.MATCH_NOT_FOUND);
+
+        match.playerDisconnected(O);
+        assertThat(count(early, ServerMessageType.OPPONENT_DISCONNECTED)).isEqualTo(1);
+        assertThat(count(X, ServerMessageType.OPPONENT_DISCONNECTED)).isEqualTo(1);
+        assertThat(count(O, ServerMessageType.OPPONENT_DISCONNECTED)).isZero();
+
+        match.removeSpectator(late);
+        match.resign(X);
+        assertThat(count(early, ServerMessageType.MATCH_END)).isEqualTo(1);
+        assertThat(count(late, ServerMessageType.MATCH_END)).isZero();
+    }
+
+    @Test
+    void unratedMatchHasAWinnerButNoRatingChange() {
+        GameMatch match = newMatch(new MatchOptions(false, false), List.of());
+        assertThat(match.snapshotFor(X).rated()).isFalse();
+        match.resign(O);
+        assertThat(match.result().result()).isEqualTo(MatchResultType.X_WIN);
+        assertThat(match.result().ratingChangeX()).isZero();
+        assertThat(match.result().ratingChangeO()).isZero();
+    }
+
+    @Test
+    void blockTwoEndsRuleLetsTheMatchGoOn() {
+        GameMatch match = newMatch(new MatchOptions(true, true), List.of());
+        int[][] moves = {{3, 0}, {2, 0}, {4, 0}, {8, 0}, {5, 0}, {0, 5}, {6, 0}, {1, 5}, {7, 0}};
+        for (int i = 0; i < moves.length; i++) {
+            match.move(i % 2 == 0 ? X : O, moves[i][0], moves[i][1]);
+        }
+        // X has 3..7 on row 0, but O sits on (2,0) and (8,0)
+        assertThat(match.isFinished()).isFalse();
+        assertThat(match.snapshotFor(O).turn()).isEqualTo(Mark.O);
+        assertThat(match.snapshotFor(O).blockTwoEnds()).isTrue();
     }
 }

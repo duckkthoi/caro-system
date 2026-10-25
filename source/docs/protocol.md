@@ -58,6 +58,8 @@ Mỗi yêu cầu nhận về đúng một phản hồi:
 
 Riêng `PING` được trả lời bằng `PONG` (cũng mang `reqId` của yêu cầu).
 
+Gửi quá nhanh (rules.md mục 13) thì yêu cầu bị bỏ qua và nhận `ERROR` với mã `RATE_LIMITED`.
+
 ## 3. Client → Server
 
 Chỉ `PING`, `REGISTER`, `LOGIN`, `AUTH` được dùng khi chưa đăng nhập. Gửi bất kỳ thông điệp nào khác
@@ -70,11 +72,14 @@ trước khi đăng nhập sẽ nhận lỗi `UNAUTHORIZED`.
 | `LOGIN` | `{"username","password"}` | `{"token","user": UserInfo}` | Dùng cho client desktop |
 | `AUTH` | `{"token"}` | `{"user": UserInfo}` | Dùng cho Web: lấy token qua REST rồi gửi làm thông điệp đầu tiên trên WS |
 | `LOGOUT` | (không có) | `{}` | Tự rời phòng (đang trong trận thì tính là đầu hàng), sau đó server đóng kết nối |
-| `GET_STATE` | (không có) | `{"room": RoomInfo\|null, "match": MatchState\|null, "queue": QueueStatus}` | Đồng bộ lại toàn bộ trạng thái |
+| `GET_STATE` | (không có) | `{"room": RoomInfo\|null, "match": MatchState\|null, "queue": QueueStatus, "spectating": bool}` | Đồng bộ lại toàn bộ trạng thái. Khi đang xem, `room` là phòng đang xem và `spectating = true` |
 | `LIST_ROOMS` | (không có) | `{"rooms": [RoomInfo]}` | |
-| `CREATE_ROOM` | `{"name"?}` | `{"room": RoomInfo}` | Tên tối đa 40 ký tự. Bỏ trống thì server tự đặt |
+| `CREATE_ROOM` | `{"name"?, "blockTwoEnds"?}` | `{"room": RoomInfo}` | Tên tối đa 40 ký tự. Bỏ trống thì server tự đặt. `blockTwoEnds` mặc định `false` (rules.md mục 9) |
 | `JOIN_ROOM` | `{"roomId"}` | `{"room": RoomInfo}` | Trận bắt đầu ngay khi phòng đủ 2 người |
-| `LEAVE_ROOM` | (không có) | `{}` | Rời phòng khi trận đang diễn ra tính là đầu hàng |
+| `LEAVE_ROOM` | (không có) | `{}` | Rời phòng khi trận đang diễn ra tính là đầu hàng. Người xem gửi thì thôi xem |
+| `SPECTATE` | `{"roomId"}` | `{"room": RoomInfo}` | Xem một phòng (rules.md mục 10). Nếu phòng đang có trận hoặc vừa đấu xong, server đẩy `MATCH_STATE` (`yourMark = null`) **trước** `OK` |
+| `CHAT` | `{"text"}` | `{}` | Gửi tin nhắn cho mọi người trong phòng (người chơi và người xem). Tin nhắn tới qua `CHAT_MESSAGE` |
+| `PLAY_BOT` | `{"level"?, "blockTwoEnds"?}` | `{"room": RoomInfo}` | Chơi với máy (rules.md mục 12). `level`: `EASY` \| `HARD` (mặc định `HARD`). Người gửi cầm `X`, trận bắt đầu ngay |
 | `MOVE` | `{"matchId","x","y"}` | `{"moveNo"}` | Kết quả của nước đi được gửi qua sự kiện `MOVE_APPLIED` |
 | `RESIGN` | `{"matchId"}` | `{}` | |
 | `LIST_ONLINE` | (không có) | `{"users": [OnlineUser]}` | Sau đó server tự đẩy `ONLINE_USERS` mỗi khi có thay đổi |
@@ -83,7 +88,7 @@ trước khi đăng nhập sẽ nhận lỗi `UNAUTHORIZED`.
 | `INVITE` | `{"userId"}` | `{"inviteId","expiresAt"}` | Người được mời nhận `INVITED` |
 | `INVITE_REPLY` | `{"inviteId","accept": true\|false}` | Đồng ý: `{"room": RoomInfo}`. Từ chối: `{}` | Đồng ý thì trận bắt đầu ngay, người mời cầm `X` |
 | `CANCEL_INVITE` | `{"inviteId"}` | `{}` | Người mời rút lại lời mời |
-| `REMATCH` | (không có) | `{"room": RoomInfo}` | Chỉ khi phòng `FINISHED`. Cả hai cùng gửi thì trận mới bắt đầu, đổi quân |
+| `REMATCH` | (không có) | `{"room": RoomInfo}` | Chỉ khi phòng `FINISHED`. Cả hai cùng gửi thì trận mới bắt đầu, đổi quân. Với máy thì máy đồng ý ngay |
 | `GET_PROFILE` | `{"userId"?}` | `Profile` | Bỏ `userId` để xem của chính mình |
 | `GET_HISTORY` | `{"userId"?,"page"?,"size"?}` | `Page<HistoryItem>` | Như `GET /api/users/{id}/matches` |
 | `GET_MATCH` | `{"matchId"}` | `MatchDetail` | Trận đã kết thúc và đã lưu |
@@ -100,13 +105,15 @@ server tự gửi thêm `ROOM_UPDATE` và `MATCH_STATE`.
 | type | Gửi cho ai | data |
 |---|---|---|
 | `ROOM_LIST` | Mọi người đã đăng nhập, mỗi khi danh sách phòng thay đổi | `{"rooms": [RoomInfo]}` |
-| `ROOM_UPDATE` | Các thành viên trong phòng | `{"room": RoomInfo}` |
-| `MATCH_START` | Hai người chơi | `MatchState` |
-| `MOVE_APPLIED` | Hai người chơi | `{"matchId","moveNo","x","y","mark","nextTurn","turnDeadline"}` |
-| `MATCH_END` | Hai người chơi | `MatchResult` |
-| `MATCH_STATE` | Người vừa kết nối lại | `MatchState` |
-| `OPPONENT_DISCONNECTED` | Người còn lại | `{"matchId","userId","graceDeadline"}` |
-| `OPPONENT_RECONNECTED` | Người còn lại | `{"matchId","userId","turnDeadline"}` |
+| `ROOM_UPDATE` | Người chơi và người xem trong phòng | `{"room": RoomInfo}` |
+| `MATCH_START` | Hai người chơi và người xem | `MatchState` |
+| `MOVE_APPLIED` | Hai người chơi và người xem | `{"matchId","moveNo","x","y","mark","nextTurn","turnDeadline"}` |
+| `MATCH_END` | Hai người chơi và người xem | `MatchResult` |
+| `MATCH_STATE` | Người vừa kết nối lại, hoặc người vừa bắt đầu xem | `MatchState` |
+| `OPPONENT_DISCONNECTED` | Người còn lại và người xem | `{"matchId","userId","graceDeadline"}`. `userId` là người mất kết nối |
+| `OPPONENT_RECONNECTED` | Người còn lại và người xem | `{"matchId","userId","turnDeadline"}` |
+| `CHAT_MESSAGE` | Người chơi và người xem trong phòng, kể cả người gửi | `{"roomId","from": PlayerInfo,"spectator": bool,"text","sentAt"}` |
+| `SPECTATE_ENDED` | Người xem của một phòng vừa bị xóa | `{"roomId"}` |
 | `ONLINE_USERS` | Mọi người đã đăng nhập, mỗi khi danh sách hoặc trạng thái người online thay đổi | `{"users": [OnlineUser]}` |
 | `QUEUE_STATUS` | Người trong hàng chờ: khi khoảng điểm được nới rộng, và khi rời hàng chờ vì đã vào phòng/được ghép | `QueueStatus` |
 | `INVITED` | Người được mời | `{"inviteId","from": PlayerInfo,"expiresAt"}` |
@@ -114,7 +121,7 @@ server tự gửi thêm `ROOM_UPDATE` và `MATCH_STATE`.
 | `KICKED` | Phiên bị đá | `{"reason": "LOGGED_IN_ELSEWHERE" \| "ACCOUNT_LOCKED"}`. Server đóng kết nối ngay sau đó |
 | `ERROR` (không có `reqId`) | Phiên gửi dữ liệu hỏng | `{"code","message"}`. Ví dụ JSON sai cú pháp |
 
-Mọi mốc thời gian (`turnDeadline`, `graceDeadline`, `serverTime`, `expiresAt`, `since`) đều tính bằng **epoch milliseconds
+Mọi mốc thời gian (`turnDeadline`, `graceDeadline`, `serverTime`, `expiresAt`, `since`, `sentAt`) đều tính bằng **epoch milliseconds
 theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để bù độ lệch đồng hồ khi hiển thị đếm ngược.
 
 ## 5. Các kiểu dữ liệu
@@ -134,12 +141,16 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
   "hostId": 1,
   "players": [PlayerInfo],      // 1 hoặc 2 người, host đứng đầu
   "matchId": null,              // id của trận gần nhất trong phòng (nếu có)
-  "rematchRequests": [1]         // id những người đã bấm chơi lại (chỉ có ý nghĩa khi FINISHED)
+  "rematchRequests": [1],        // id những người đã bấm chơi lại (chỉ có ý nghĩa khi FINISHED)
+  "blockTwoEnds": false,         // luật chặn hai đầu (rules.md mục 9)
+  "botLevel": null,              // EASY | HARD nếu đây là phòng chơi với máy, ngược lại null
+  "spectators": [PlayerInfo]     // người đang xem
 }
+// Máy xuất hiện trong "players" như một PlayerInfo có id = -1, username "bot".
 
 // OnlineUser
 {"id": 2, "username": "bob", "displayName": "Bob", "rating": 1016,
- "status": "IDLE"}              // IDLE | IN_QUEUE | IN_ROOM | PLAYING
+ "status": "IDLE"}              // IDLE | IN_QUEUE | IN_ROOM | PLAYING | SPECTATING
 
 // QueueStatus
 {
@@ -156,7 +167,9 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
   "boardSize": 15,
   "playerX": PlayerInfo,
   "playerO": PlayerInfo,
-  "yourMark": "X",               // X | O
+  "yourMark": "X",               // X | O, null nếu người nhận là người xem
+  "blockTwoEnds": false,
+  "rated": true,                 // false với trận chơi cùng máy (không tính Elo)
   "status": "IN_PROGRESS",       // IN_PROGRESS | PAUSED | FINISHED
   "turn": "O",
   "moveCount": 3,
@@ -214,6 +227,7 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
   "matchId": "6f1c...", "roomId": "R1",
   "playerX": PlayerInfo, "playerO": PlayerInfo,
   "result": "X_WIN", "reason": "FIVE_IN_ROW", "winnerId": 1,
+  "blockTwoEnds": false,
   "ratingChange": {"X": 16, "O": -16},
   "totalMoves": 9, "startedAt": "...", "endedAt": "..."
 }
@@ -249,9 +263,9 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
 | `ACCOUNT_LOCKED` | Tài khoản bị khóa |
 | `USER_NOT_FOUND` | `userId` không tồn tại |
 | `ALREADY_IN_ROOM` | Tạo hoặc vào phòng khi đang ở một phòng khác |
-| `NOT_IN_ROOM` | Rời phòng khi không ở phòng nào |
+| `NOT_IN_ROOM` | Rời phòng hoặc chat khi không ở (hay xem) phòng nào |
 | `ROOM_NOT_FOUND` | Phòng không tồn tại |
-| `ROOM_FULL` | Phòng đã đủ người hoặc không ở trạng thái `WAITING` |
+| `ROOM_FULL` | Phòng đã đủ người hoặc không ở trạng thái `WAITING`, hoặc đã đủ 10 người xem |
 | `MATCH_NOT_FOUND` | `matchId` không phải trận hiện tại của người gửi (`MOVE`, `RESIGN`), hoặc không có trận đã lưu nào có id đó (`GET_MATCH`) |
 | `MATCH_NOT_IN_PROGRESS` | Trận đã kết thúc hoặc đang tạm dừng |
 | `NOT_YOUR_TURN` | Chưa đến lượt |
@@ -264,6 +278,7 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
 | `INVITE_PENDING` | Gửi lời mời mới khi lời mời trước chưa được trả lời |
 | `INVITE_NOT_FOUND` | Lời mời không tồn tại, đã hết hạn, đã đóng, hoặc người mời không còn sẵn sàng |
 | `REMATCH_NOT_AVAILABLE` | Gửi `REMATCH` khi phòng không ở trạng thái `FINISHED` |
+| `RATE_LIMITED` | Gửi thông điệp quá nhanh (rules.md mục 13) |
 | `FORBIDDEN` | Không đủ quyền (REST admin) |
 | `INTERNAL_ERROR` | Lỗi không lường trước ở server |
 

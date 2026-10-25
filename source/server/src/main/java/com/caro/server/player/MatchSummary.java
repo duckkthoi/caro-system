@@ -19,6 +19,7 @@ public record MatchSummary(
         MatchResultType result,
         EndReason reason,
         Long winnerId,
+        boolean blockTwoEnds,
         Map<String, Integer> ratingChange,
         int totalMoves,
         Instant startedAt,
@@ -29,7 +30,7 @@ public record MatchSummary(
         ratingChange.put("X", m.getRatingChangeX());
         ratingChange.put("O", m.getRatingChangeO());
         return new MatchSummary(m.getId(), m.getRoomId(), players.get(m.getPlayerXId()),
-                players.get(m.getPlayerOId()), m.getResult(), m.getEndReason(), m.getWinnerId(), ratingChange,
-                m.getTotalMoves(), m.getStartedAt(), m.getEndedAt());
+                players.get(m.getPlayerOId()), m.getResult(), m.getEndReason(), m.getWinnerId(), m.isBlockTwoEnds(),
+                ratingChange, m.getTotalMoves(), m.getStartedAt(), m.getEndedAt());
     }
 }

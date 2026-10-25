@@ -129,7 +129,7 @@ public class PlayerQueryService {
             board.place(mv.getX(), mv.getY(), markOf(m, mv));
         }
         MoveRecord last = moves.get(moves.size() - 1);
-        return RuleEngine.findWinLine(board, last.getX(), last.getY(), game.winLength());
+        return RuleEngine.findWinLine(board, last.getX(), last.getY(), game.winLength(), m.isBlockTwoEnds());
     }
 
     private User requireUser(long userId) {

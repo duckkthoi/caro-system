@@ -10,9 +10,11 @@ import org.springframework.stereotype.Component;
 
 import com.caro.server.auth.AuthService;
 import com.caro.server.auth.AuthenticatedUser;
+import com.caro.server.bot.BotLevel;
 import com.caro.server.common.AppException;
 import com.caro.server.common.ErrorBody;
 import com.caro.server.common.ErrorCode;
+import com.caro.server.config.CaroProperties;
 import com.caro.server.lobby.LobbyService;
 import com.caro.server.player.PlayerQueryService;
 import com.caro.server.user.User;
@@ -40,10 +42,19 @@ public class MessageDispatcher {
     record AuthRequest(String token) {
     }
 
-    record CreateRoomRequest(String name) {
+    record CreateRoomRequest(String name, Boolean blockTwoEnds) {
     }
 
     record JoinRoomRequest(String roomId) {
+    }
+
+    record SpectateRequest(String roomId) {
+    }
+
+    record ChatRequest(String text) {
+    }
+
+    record PlayBotRequest(String level, Boolean blockTwoEnds) {
     }
 
     record MoveRequest(String matchId, Integer x, Integer y) {
@@ -80,17 +91,21 @@ public class MessageDispatcher {
     private final AuthService auth;
     private final LobbyService lobby;
     private final PlayerQueryService queries;
+    private final CaroProperties.RateLimit limits;
 
     public MessageDispatcher(ObjectMapper mapper, SessionRegistry registry, AuthService auth, LobbyService lobby,
-                             PlayerQueryService queries) {
+                             PlayerQueryService queries, CaroProperties props) {
         this.mapper = mapper;
         this.registry = registry;
         this.auth = auth;
         this.lobby = lobby;
         this.queries = queries;
+        this.limits = props.rateLimit();
     }
 
     public void onOpen(ClientSession session) {
+        session.setRateLimiters(new RateLimiter(limits.burst(), limits.perSecond()),
+                new RateLimiter(limits.chatBurst(), limits.chatPerSecond()));
         registry.add(session);
         log.info("{} connected from {}", session.id(), session.remoteAddress());
     }
@@ -103,14 +118,20 @@ public class MessageDispatcher {
         } catch (JsonProcessingException e) {
             root = null;
         }
-        if (root == null || !root.isObject()) {
+        boolean valid = root != null && root.isObject();
+        String reqId = valid && root.hasNonNull("reqId") ? root.get("reqId").asText() : null;
+        String typeName = valid && root.hasNonNull("type") ? root.get("type").asText() : null;
+        ClientMessageType type = ClientMessageType.parse(typeName);
+
+        // everything but PING counts, broken messages included, so they cannot be used to flood the server
+        if (type != ClientMessageType.PING && !session.messageLimiter().tryAcquire()) {
+            sendError(session, reqId, ErrorCode.RATE_LIMITED, "Bạn thao tác quá nhanh, hãy thử lại sau giây lát");
+            return;
+        }
+        if (!valid) {
             sendError(session, null, ErrorCode.BAD_REQUEST, "Thông điệp phải là một object JSON");
             return;
         }
-
-        String reqId = root.hasNonNull("reqId") ? root.get("reqId").asText() : null;
-        String typeName = root.hasNonNull("type") ? root.get("type").asText() : null;
-        ClientMessageType type = ClientMessageType.parse(typeName);
         try {
             if (type == null) {
                 throw new AppException(ErrorCode.UNKNOWN_TYPE, "type không được hỗ trợ: " + typeName);
@@ -171,7 +192,27 @@ public class MessageDispatcher {
             case LIST_ROOMS -> ok(session, reqId, Map.of("rooms", lobby.listRooms()));
             case CREATE_ROOM -> {
                 CreateRoomRequest req = read(data, CreateRoomRequest.class);
-                ok(session, reqId, Map.of("room", lobby.createRoom(userId(session), req.name())));
+                ok(session, reqId, Map.of("room", lobby.createRoom(userId(session), req.name(),
+                        Boolean.TRUE.equals(req.blockTwoEnds()))));
+            }
+            case SPECTATE -> {
+                SpectateRequest req = read(data, SpectateRequest.class);
+                requireField(req.roomId(), "roomId");
+                ok(session, reqId, Map.of("room", lobby.spectate(userId(session), req.roomId())));
+            }
+            case CHAT -> {
+                ChatRequest req = read(data, ChatRequest.class);
+                requireField(req.text(), "text");
+                if (!session.chatLimiter().tryAcquire()) {
+                    throw new AppException(ErrorCode.RATE_LIMITED, "Bạn gửi tin nhắn quá nhanh, hãy chờ một chút");
+                }
+                lobby.chat(userId(session), req.text());
+                ok(session, reqId, Map.of());
+            }
+            case PLAY_BOT -> {
+                PlayBotRequest req = read(data, PlayBotRequest.class);
+                ok(session, reqId, Map.of("room", lobby.playBot(userId(session), parseLevel(req.level()),
+                        Boolean.TRUE.equals(req.blockTwoEnds()))));
             }
             case JOIN_ROOM -> {
                 JoinRoomRequest req = read(data, JoinRoomRequest.class);
@@ -302,6 +343,17 @@ public class MessageDispatcher {
             return UUID.fromString(value);
         } catch (IllegalArgumentException e) {
             throw new AppException(ErrorCode.BAD_REQUEST, name + " không hợp lệ");
+        }
+    }
+
+    private static BotLevel parseLevel(String value) {
+        if (value == null) {
+            return BotLevel.HARD;
+        }
+        try {
+            return BotLevel.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "level phải là EASY hoặc HARD");
         }
     }
 

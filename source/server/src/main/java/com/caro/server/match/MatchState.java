@@ -6,11 +6,13 @@ import java.util.UUID;
 import com.caro.server.game.Mark;
 import com.caro.server.user.PlayerInfo;
 
-/** Full snapshot of a match for one recipient (MATCH_START, MATCH_STATE, GET_STATE). */
+/** Full snapshot of a match for one recipient (MATCH_START, MATCH_STATE, GET_STATE). yourMark is null for spectators. */
 public record MatchState(
         UUID matchId,
         String roomId,
         int boardSize,
+        boolean blockTwoEnds,
+        boolean rated,
         PlayerInfo playerX,
         PlayerInfo playerO,
         Mark yourMark,

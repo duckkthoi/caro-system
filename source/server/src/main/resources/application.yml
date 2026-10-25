@@ -36,6 +36,13 @@ caro:
     check-interval: 1s
   invite:
     timeout: 20s
+  rate-limit:                    # token buckets per connection, see docs/rules.md section 13
+    burst: 20                    # messages in a row (PING is not counted)
+    per-second: 10               # ... then this many per second
+    chat-burst: 5
+    chat-per-second: 0.5         # one chat message every 2 s
+  bot:
+    move-delay: 500ms
   heartbeat:
     idle-timeout: 30s            # close a session if nothing was received for this long
     check-interval: 5s

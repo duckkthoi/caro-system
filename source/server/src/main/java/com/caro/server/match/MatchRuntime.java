@@ -13,4 +13,9 @@ public record MatchRuntime(
         ScheduledExecutorService scheduler,
         MatchEndListener listener,
         Clock clock) {
+
+    /** Same runtime with another notifier (a match against the bot routes the bot's events to it). */
+    public MatchRuntime withNotifier(Notifier other) {
+        return new MatchRuntime(settings, other, scheduler, listener, clock);
+    }
 }

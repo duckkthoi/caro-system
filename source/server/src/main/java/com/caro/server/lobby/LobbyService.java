@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.caro.server.bot.BotLevel;
+import com.caro.server.bot.BotPlayer;
 import com.caro.server.common.AppException;
 import com.caro.server.common.ErrorCode;
 import com.caro.server.config.CaroProperties;
@@ -33,8 +35,8 @@ import com.caro.server.user.UserRepository;
 import jakarta.annotation.PostConstruct;
 
 /**
- * Everything that happens outside a match: rooms, the online list, quick match, invitations and rematches.
- * Also routes match actions to the right {@link GameMatch}.
+ * Everything that happens outside a match: rooms, spectators, chat, the online list, quick match, invitations,
+ * rematches and matches against the bot. Also routes match actions to the right {@link GameMatch}.
  *
  * <p><b>Locking.</b> All lobby state (rooms, online players, queue, invitations) is guarded by one lobby lock,
  * so a player can never end up in two rooms, or be matched and invited into two matches at once.
@@ -51,11 +53,13 @@ public class LobbyService implements MatchEndListener {
 
     private static final Logger log = LoggerFactory.getLogger(LobbyService.class);
     private static final int ROOM_NAME_MAX = 40;
+    private static final int CHAT_MAX = 200;
 
     private final Object lock = new Object();
     // ---- guarded by lock ----
     private final Map<String, Room> rooms = new LinkedHashMap<>();
-    private final Map<Long, Room> roomByUser = new HashMap<>();
+    private final Map<Long, Room> roomByUser = new HashMap<>();   // players only
+    private final Map<Long, Room> spectating = new HashMap<>();   // spectators only
     private final Map<Long, PlayerInfo> online = new HashMap<>();
     private final Map<String, Invitation> invites = new LinkedHashMap<>();
     private final MatchmakingQueue queue;
@@ -109,7 +113,7 @@ public class LobbyService implements MatchEndListener {
         }
     }
 
-    public RoomInfo createRoom(long userId, String rawName) {
+    public RoomInfo createRoom(long userId, String rawName, boolean blockTwoEnds) {
         PlayerInfo me = loadPlayer(userId);
         String name = rawName == null || rawName.isBlank() ? defaultRoomName(me) : rawName.trim();
         if (name.length() > ROOM_NAME_MAX) {
@@ -118,7 +122,21 @@ public class LobbyService implements MatchEndListener {
         synchronized (lock) {
             requireNotInRoom(userId);
             dropFromQueue(userId);
-            Room room = openRoom(me, name);
+            Room room = openRoom(me, name, blockTwoEnds, null);
+            broadcastLobby();
+            return room.info();
+        }
+    }
+
+    /** Play against the computer: a room is opened with the bot as the second player, the user plays X first. */
+    public RoomInfo playBot(long userId, BotLevel level, boolean blockTwoEnds) {
+        PlayerInfo me = loadPlayer(userId);
+        synchronized (lock) {
+            requireNotInRoom(userId);
+            dropFromQueue(userId);
+            Room room = openRoom(me, "Chơi với " + level.displayName().toLowerCase(), blockTwoEnds, level);
+            room.addPlayer(BotPlayer.info(level));
+            startMatch(room, userId, BotPlayer.ID);
             broadcastLobby();
             return room.info();
         }
@@ -142,13 +160,15 @@ public class LobbyService implements MatchEndListener {
         }
     }
 
+    /** A player leaves their room; a spectator stops watching. */
     public void leaveRoom(long userId) {
         synchronized (lock) {
             Room room = roomByUser.get(userId);
-            if (room == null) {
+            if (room != null) {
+                removeFromRoom(room, userId);
+            } else if (!stopSpectating(userId)) {
                 throw new AppException(ErrorCode.NOT_IN_ROOM, "Bạn không ở trong phòng nào");
             }
-            removeFromRoom(room, userId);
             broadcastLobby();
         }
     }
@@ -159,19 +179,91 @@ public class LobbyService implements MatchEndListener {
             if (room != null) {
                 removeFromRoom(room, userId);
                 broadcastLobby();
+            } else if (stopSpectating(userId)) {
+                broadcastLobby();
             }
         }
     }
 
-    /** Snapshot for GET_STATE. Values may be null, hence a HashMap instead of Map.of. */
+    /**
+     * Snapshot for GET_STATE: my room as a player, or else the room I am watching. Values may be null, hence a
+     * HashMap instead of Map.of.
+     */
     public Map<String, Object> getState(long userId) {
         synchronized (lock) {
             Room room = roomByUser.get(userId);
+            boolean watching = room == null && spectating.containsKey(userId);
+            if (watching) {
+                room = spectating.get(userId);
+            }
             Map<String, Object> state = new HashMap<>();
             state.put("room", room == null ? null : room.info());
             state.put("match", activeMatchSnapshot(room, userId));
             state.put("queue", queueStatus(userId));
+            state.put("spectating", watching);
             return state;
+        }
+    }
+
+    // ------------------------------------------------------------------ spectators (docs/rules.md, section 10)
+
+    /**
+     * Starts watching a room. The spectator gets ROOM_UPDATE, then (if there is a match to show) MATCH_STATE, then
+     * every event of the match, like the players.
+     */
+    public RoomInfo spectate(long userId, String roomId) {
+        synchronized (lock) {
+            if (roomByUser.containsKey(userId)) {
+                throw new AppException(ErrorCode.ALREADY_IN_ROOM, "Hãy rời phòng của bạn trước khi xem phòng khác");
+            }
+            Room room = rooms.get(roomId);
+            if (room == null) {
+                throw new AppException(ErrorCode.ROOM_NOT_FOUND, "Phòng không tồn tại");
+            }
+            if (spectating.get(userId) != room) {
+                if (room.isFullOfSpectators()) {
+                    throw new AppException(ErrorCode.ROOM_FULL, "Phòng đã đủ " + Room.MAX_SPECTATORS + " người xem");
+                }
+                stopSpectating(userId);
+                room.addSpectator(player(userId));
+                spectating.put(userId, room);
+                sendRoomUpdate(room);
+                log.info("User {} is watching room {}", userId, room.id());
+            }
+            if (room.match() != null && room.status() != RoomStatus.WAITING) {
+                room.match().addSpectator(userId); // sends MATCH_STATE
+            }
+            broadcastLobby();
+            return room.info();
+        }
+    }
+
+    // ------------------------------------------------------------------ chat (docs/rules.md, section 11)
+
+    /** Sends a message to everyone in the sender's room (players and spectators), the sender included. */
+    public void chat(long userId, String rawText) {
+        String text = rawText == null ? "" : rawText.replaceAll("\\p{Cntrl}", " ").strip();
+        if (text.isEmpty() || text.length() > CHAT_MAX) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR, "Tin nhắn phải dài từ 1 đến " + CHAT_MAX + " ký tự");
+        }
+        synchronized (lock) {
+            Room room = roomByUser.get(userId);
+            boolean spectator = room == null;
+            if (spectator) {
+                room = spectating.get(userId);
+            }
+            if (room == null) {
+                throw new AppException(ErrorCode.NOT_IN_ROOM, "Bạn không ở trong phòng nào");
+            }
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("roomId", room.id());
+            message.put("from", player(userId));
+            message.put("spectator", spectator);
+            message.put("text", text);
+            message.put("sentAt", now());
+            for (long memberId : room.memberIds()) {
+                sessions.sendToUser(memberId, ServerMessageType.CHAT_MESSAGE, message);
+            }
         }
     }
 
@@ -190,6 +282,9 @@ public class LobbyService implements MatchEndListener {
             if (room.status() != RoomStatus.FINISHED) {
                 throw new AppException(ErrorCode.REMATCH_NOT_AVAILABLE,
                         "Chỉ chơi lại được khi trận vừa kết thúc và phòng còn đủ 2 người");
+            }
+            if (room.botLevel() != null) {
+                room.requestRematch(BotPlayer.ID); // the bot always wants another game
             }
             if (room.requestRematch(userId)) {
                 GameMatch last = room.match();
@@ -324,7 +419,7 @@ public class LobbyService implements MatchEndListener {
             dropFromQueue(userId);
             if (room == null) {
                 PlayerInfo inviter = player(inviterId);
-                room = openRoom(inviter, defaultRoomName(inviter));
+                room = openRoom(inviter, defaultRoomName(inviter), false, null);
             }
             seatAndStart(room, userId);
             broadcastLobby();
@@ -372,13 +467,15 @@ public class LobbyService implements MatchEndListener {
         requireMatch(userId, matchId).resign(userId);
     }
 
-    /** Persists the result, then removes players who are no longer online from the room. */
+    /** Persists the result (rated matches only), then removes players who are no longer online from the room. */
     @Override
     public void onMatchEnded(GameMatch match) {
-        try {
-            persistence.save(match);
-        } catch (RuntimeException e) {
-            log.error("Failed to save match {}", match.id(), e);
+        if (match.options().rated()) {
+            try {
+                persistence.save(match);
+            } catch (RuntimeException e) {
+                log.error("Failed to save match {}", match.id(), e);
+            }
         }
         MatchResult result = match.result();
         synchronized (lock) {
@@ -392,13 +489,13 @@ public class LobbyService implements MatchEndListener {
                 room.updatePlayer(x);
                 room.updatePlayer(o);
                 for (PlayerInfo p : room.players()) {
-                    if (!sessions.isOnline(p.id())) {
+                    if (!BotPlayer.isBot(p.id()) && !sessions.isOnline(p.id())) {
                         room.removePlayer(p.id());
                         roomByUser.remove(p.id());
                     }
                 }
                 if (room.isEmpty()) {
-                    rooms.remove(room.id());
+                    deleteRoom(room);
                 } else {
                     sendRoomUpdate(room);
                 }
@@ -436,6 +533,7 @@ public class LobbyService implements MatchEndListener {
             }
             online.remove(userId);
             queue.remove(userId);
+            stopSpectating(userId);
             closeInvitesOf(userId, InviteCloseReason.UNAVAILABLE);
             Room room = roomByUser.get(userId);
             if (room != null) {
@@ -452,8 +550,10 @@ public class LobbyService implements MatchEndListener {
 
     // ------------------------------------------------------------------ internals (caller holds the lock)
 
-    private Room openRoom(PlayerInfo host, String name) {
-        Room room = new Room("R" + roomSeq.incrementAndGet(), name, host);
+    /** @param botLevel null for a normal room */
+    private Room openRoom(PlayerInfo host, String name, boolean blockTwoEnds, BotLevel botLevel) {
+        stopSpectating(host.id());
+        Room room = new Room("R" + roomSeq.incrementAndGet(), name, host, blockTwoEnds, botLevel);
         rooms.put(room.id(), room);
         roomByUser.put(host.id(), room);
         log.info("User {} opened room {}", host.id(), room.id());
@@ -462,9 +562,39 @@ public class LobbyService implements MatchEndListener {
 
     /** Seats a second player in a waiting room and starts the match. The host plays X. */
     private void seatAndStart(Room room, long guestId) {
-        room.addPlayer(player(guestId));
-        roomByUser.put(guestId, room);
+        seat(room, player(guestId));
         startMatch(room, room.host().id(), guestId);
+    }
+
+    /** Becoming a player ends watching another room. */
+    private void seat(Room room, PlayerInfo player) {
+        stopSpectating(player.id());
+        room.addPlayer(player);
+        roomByUser.put(player.id(), room);
+    }
+
+    /** @return false if the user was not watching any room */
+    private boolean stopSpectating(long userId) {
+        Room room = spectating.remove(userId);
+        if (room == null) {
+            return false;
+        }
+        room.removeSpectator(userId);
+        if (room.match() != null) {
+            room.match().removeSpectator(userId);
+        }
+        sendRoomUpdate(room);
+        return true;
+    }
+
+    /** Removes a room that has no player left. Its spectators are told and sent back to the lobby. */
+    private void deleteRoom(Room room) {
+        rooms.remove(room.id());
+        for (long spectatorId : room.spectatorIds()) {
+            spectating.remove(spectatorId);
+            sessions.sendToUser(spectatorId, ServerMessageType.SPECTATE_ENDED, Map.of("roomId", room.id()));
+        }
+        log.info("Room {} closed", room.id());
     }
 
     /**
@@ -472,8 +602,8 @@ public class LobbyService implements MatchEndListener {
      * computed from the ratings at match start. Both players' other invitations are closed.
      */
     private void startMatch(Room room, long xId, long oId) {
-        PlayerInfo x = loadPlayer(xId);
-        PlayerInfo o = loadPlayer(oId);
+        PlayerInfo x = participant(room, xId);
+        PlayerInfo o = participant(room, oId);
         room.updatePlayer(x);
         room.updatePlayer(o);
         online.computeIfPresent(xId, (id, old) -> x);
@@ -481,7 +611,17 @@ public class LobbyService implements MatchEndListener {
         closeInvitesOf(xId, InviteCloseReason.UNAVAILABLE);
         closeInvitesOf(oId, InviteCloseReason.UNAVAILABLE);
 
-        GameMatch match = new GameMatch(UUID.randomUUID(), room.id(), x, o, matchRuntime);
+        MatchRuntime runtime = matchRuntime;
+        BotPlayer bot = null;
+        if (room.botLevel() != null) {
+            bot = new BotPlayer(room.botLevel(), scheduler, props.bot().moveDelay().toMillis());
+            runtime = matchRuntime.withNotifier(bot.wrap(sessions));
+        }
+        GameMatch match = new GameMatch(UUID.randomUUID(), room.id(), x, o, room.options(), room.spectatorIds(),
+                runtime);
+        if (bot != null) {
+            bot.attach(match);
+        }
         room.setMatch(match);
         sendRoomUpdate(room);
         match.start();
@@ -497,9 +637,8 @@ public class LobbyService implements MatchEndListener {
             for (PlayerInfo p : List.of(x, o)) {
                 sessions.sendToUser(p.id(), ServerMessageType.QUEUE_STATUS, QueueStatus.notQueued(queue.size()));
             }
-            Room room = openRoom(x, "Ghép trận ngẫu nhiên");
-            room.addPlayer(o);
-            roomByUser.put(o.id(), room);
+            Room room = openRoom(x, "Ghép trận ngẫu nhiên", false, null);
+            seat(room, o);
             log.info("Matched user {} with user {} (ratings {} / {})", x.id(), o.id(), x.rating(), o.rating());
             startMatch(room, x.id(), o.id());
         }
@@ -514,12 +653,12 @@ public class LobbyService implements MatchEndListener {
         }
         room.removePlayer(userId);
         roomByUser.remove(userId);
+        log.info("User {} left room {}", userId, room.id());
         if (room.isEmpty()) {
-            rooms.remove(room.id());
+            deleteRoom(room);
         } else {
             sendRoomUpdate(room);
         }
-        log.info("User {} left room {}", userId, room.id());
     }
 
     /** Takes the player out of the queue (because they entered a room) and tells them. */
@@ -609,7 +748,7 @@ public class LobbyService implements MatchEndListener {
         }
         Room room = roomByUser.get(userId);
         if (room == null) {
-            return PresenceStatus.IDLE;
+            return spectating.containsKey(userId) ? PresenceStatus.SPECTATING : PresenceStatus.IDLE;
         }
         return room.status() == RoomStatus.PLAYING ? PresenceStatus.PLAYING : PresenceStatus.IN_ROOM;
     }
@@ -618,6 +757,11 @@ public class LobbyService implements MatchEndListener {
     private PlayerInfo player(long userId) {
         PlayerInfo p = online.get(userId);
         return p != null ? p : loadPlayer(userId);
+    }
+
+    /** A player about to start a match: the bot, or a user with the rating re-read from the database. */
+    private PlayerInfo participant(Room room, long userId) {
+        return BotPlayer.isBot(userId) ? BotPlayer.info(room.botLevel()) : loadPlayer(userId);
     }
 
     private PlayerInfo loadPlayer(long userId) {
@@ -649,10 +793,11 @@ public class LobbyService implements MatchEndListener {
                 .toList();
     }
 
+    /** To the human players and the spectators. */
     private void sendRoomUpdate(Room room) {
-        RoomInfo info = room.info();
-        for (PlayerInfo p : room.players()) {
-            sessions.sendToUser(p.id(), ServerMessageType.ROOM_UPDATE, Map.of("room", info));
+        Map<String, Object> event = Map.of("room", room.info());
+        for (long memberId : room.memberIds()) {
+            sessions.sendToUser(memberId, ServerMessageType.ROOM_UPDATE, event);
         }
     }
 

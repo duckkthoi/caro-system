@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /** Typed view of the {@code caro.*} section in application.yml. */
 @ConfigurationProperties(prefix = "caro")
 public record CaroProperties(Tcp tcp, Game game, Matchmaking matchmaking, Invite invite, Heartbeat heartbeat, Jwt jwt,
-                             Admin admin, Cors cors) {
+                             Admin admin, Cors cors, RateLimit rateLimit, Bot bot) {
 
     public record Tcp(int port, int maxLineLength, int maxOutboundQueue) {
     }
@@ -38,5 +38,16 @@ public record CaroProperties(Tcp tcp, Game game, Matchmaking matchmaking, Invite
     }
 
     public record Cors(List<String> allowedOrigins) {
+    }
+
+    /**
+     * Per connection token buckets (docs/rules.md, section 13): every message but PING takes a token from the
+     * general bucket, CHAT also from the chat bucket.
+     */
+    public record RateLimit(int burst, double perSecond, int chatBurst, double chatPerSecond) {
+    }
+
+    /** The computer opponent waits {@code moveDelay} before each move, so it feels like a player. */
+    public record Bot(Duration moveDelay) {
     }
 }

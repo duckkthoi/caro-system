@@ -64,6 +64,47 @@ class RuleEngineTest {
     }
 
     @Test
+    void blockTwoEndsRuleRejectsAFiveBlockedOnBothEnds() {
+        place(Mark.O, 2, 5, 8, 5);
+        place(Mark.X, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5);
+        assertThat(RuleEngine.findWinLine(board, 7, 5, 5, true)).isEmpty();
+    }
+
+    @Test
+    void blockTwoEndsRuleAcceptsAFiveBlockedOnOneEnd() {
+        place(Mark.O, 2, 5);
+        place(Mark.X, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5);
+        assertThat(RuleEngine.findWinLine(board, 5, 5, 5, true)).hasSize(5);
+    }
+
+    @Test
+    void blockTwoEndsRuleDoesNotCountTheBoardEdge() {
+        place(Mark.O, 5, 0);
+        place(Mark.X, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0);
+        assertThat(RuleEngine.findWinLine(board, 0, 0, 5, true)).hasSize(5);
+    }
+
+    @Test
+    void blockTwoEndsRuleStillFindsAnotherOpenDirection() {
+        // the horizontal five through (5,5) is blocked on both ends, the vertical one is open
+        place(Mark.O, 2, 5, 8, 5);
+        place(Mark.X, 3, 5, 4, 5, 6, 5, 7, 5);
+        place(Mark.X, 5, 6, 5, 7, 5, 8, 5, 9);
+        place(Mark.X, 5, 5);
+        List<int[]> line = RuleEngine.findWinLine(board, 5, 5, 5, true);
+        assertThat(line).hasSize(5);
+        assertThat(line.get(0)).containsExactly(5, 5);
+        assertThat(line.get(4)).containsExactly(5, 9);
+    }
+
+    @Test
+    void blockTwoEndsRuleAlsoAppliesToSixInARow() {
+        place(Mark.O, 0, 9, 7, 9);
+        place(Mark.X, 1, 9, 2, 9, 3, 9, 4, 9, 5, 9, 6, 9);
+        assertThat(RuleEngine.findWinLine(board, 6, 9, 5, true)).isEmpty();
+    }
+
+    @Test
     void opponentStoneBreaksTheLine() {
         place(Mark.X, 0, 0, 1, 0, 3, 0, 4, 0, 5, 0);
         place(Mark.O, 2, 0);
