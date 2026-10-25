@@ -1,6 +1,7 @@
 package com.caro.client.app;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import com.caro.client.app.ClientListener.ConnectionStatus;
+import com.caro.client.model.ChatMessage;
 import com.caro.client.model.HistoryItem;
 import com.caro.client.model.Invitation;
 import com.caro.client.model.LeaderboardEntry;
@@ -48,6 +50,7 @@ public final class GameClient {
 
     static final long RECONNECT_INTERVAL_MS = 2_000;
     static final long RECONNECT_WINDOW_MS = 30_000;
+    static final int CHAT_KEEP = 100;
 
     private final Executor ui;
     private final ScheduledExecutorService background = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -66,8 +69,9 @@ public final class GameClient {
     private UserInfo me;
     private List<RoomInfo> rooms = List.of();
     private List<OnlineUser> online = List.of();
-    private RoomInfo room;
+    private RoomInfo room; // the room I play in, or the room I watch
     private MatchView match;
+    private List<ChatMessage> chat = List.of(); // messages of the current room since I entered it
     private QueueStatus queue;
     private boolean loggingOut;
     private String kickReason;
@@ -145,17 +149,38 @@ public final class GameClient {
     // ------------------------------------------------------------------ rooms and lobby
 
     public CompletableFuture<RoomInfo> createRoom(String name) {
+        return createRoom(name, false);
+    }
+
+    /** @param blockTwoEnds the optional rule of docs/rules.md, section 9 */
+    public CompletableFuture<RoomInfo> createRoom(String name, boolean blockTwoEnds) {
         Map<String, Object> data = new HashMap<>();
         if (name != null && !name.isBlank()) {
             data.put("name", name.trim());
         }
+        data.put("blockTwoEnds", blockTwoEnds);
         return request("CREATE_ROOM", data).thenApply(this::roomFromReply);
+    }
+
+    /** Watch a room. The server sends MATCH_STATE (if there is a match) before the reply. */
+    public CompletableFuture<RoomInfo> spectate(String roomId) {
+        return request("SPECTATE", Map.of("roomId", roomId)).thenApply(this::roomFromReply);
+    }
+
+    /** @param level EASY or HARD */
+    public CompletableFuture<RoomInfo> playBot(String level, boolean blockTwoEnds) {
+        return request("PLAY_BOT", Map.of("level", level, "blockTwoEnds", blockTwoEnds)).thenApply(this::roomFromReply);
+    }
+
+    public CompletableFuture<Void> sendChat(String text) {
+        return request("CHAT", Map.of("text", text)).thenAccept(ok -> { });
     }
 
     public CompletableFuture<RoomInfo> joinRoom(String roomId) {
         return request("JOIN_ROOM", Map.of("roomId", roomId)).thenApply(this::roomFromReply);
     }
 
+    /** Leaves my room, or stops watching. */
     public CompletableFuture<Void> leaveRoom() {
         return request("LEAVE_ROOM", Map.of()).thenAccept(ok -> {
             setRoom(null);
@@ -263,6 +288,15 @@ public final class GameClient {
 
     public MatchView match() {
         return match;
+    }
+
+    /** True when I only watch the room (docs/rules.md, section 10). */
+    public boolean isSpectating() {
+        return room != null && me != null && room.hasSpectator(me.id());
+    }
+
+    public List<ChatMessage> chat() {
+        return chat;
     }
 
     public QueueStatus queue() {
@@ -456,14 +490,33 @@ public final class GameClient {
                 if (isCurrentMatch(data.path("matchId").asText())) {
                     match.opponentDisconnected(data.path("graceDeadline").asLong(), serverNow());
                     fireMatch();
-                    fire(l -> l.notice("Đối thủ mất kết nối. Trận tạm dừng trong lúc chờ đối thủ quay lại."));
+                    String text = match.isSpectating() ? "Một người chơi mất kết nối. Trận tạm dừng."
+                            : "Đối thủ mất kết nối. Trận tạm dừng trong lúc chờ đối thủ quay lại.";
+                    fire(l -> l.notice(text));
                 }
             }
             case "OPPONENT_RECONNECTED" -> {
                 if (isCurrentMatch(data.path("matchId").asText())) {
                     match.opponentReconnected(data.path("turnDeadline").asLong());
                     fireMatch();
-                    fire(l -> l.notice("Đối thủ đã kết nối lại. Trận tiếp tục."));
+                    String text = match.isSpectating() ? "Người chơi đã kết nối lại."
+                            : "Đối thủ đã kết nối lại. Trận tiếp tục.";
+                    fire(l -> l.notice(text));
+                }
+            }
+            case "CHAT_MESSAGE" -> {
+                ChatMessage message = Json.convert(data, ChatMessage.class);
+                if (room != null && room.id().equals(message.roomId())) {
+                    List<ChatMessage> next = new ArrayList<>(chat);
+                    next.add(message);
+                    setChat(next.size() > CHAT_KEEP ? next.subList(next.size() - CHAT_KEEP, next.size()) : next);
+                }
+            }
+            case "SPECTATE_ENDED" -> {
+                if (room != null && room.id().equals(data.path("roomId").asText())) {
+                    setRoom(null);
+                    setMatch(null);
+                    fire(l -> l.notice("Phòng bạn đang xem đã đóng."));
                 }
             }
             case "QUEUE_STATUS" -> setQueue(Json.convert(data, QueueStatus.class));
@@ -489,7 +542,7 @@ public final class GameClient {
             return;
         }
         match.finish(result);
-        int change = result.ratingChangeOf(match.myMark());
+        int change = match.isSpectating() ? 0 : result.ratingChangeOf(match.myMark());
         if (change != 0 && me != null) {
             me = me.withRating(me.rating() + change);
             UserInfo updated = me;
@@ -520,12 +573,23 @@ public final class GameClient {
         fire(l -> l.onlineChanged(snapshot));
     }
 
+    /** Entering another room drops the match and the chat of the previous one. */
     private void setRoom(RoomInfo newRoom) {
         if (newRoom != null && match != null && !newRoom.id().equals(match.roomId())) {
             setMatch(null); // match of another room
         }
+        boolean sameRoom = newRoom != null && room != null && newRoom.id().equals(room.id());
         room = newRoom;
+        if (!sameRoom && !chat.isEmpty()) {
+            setChat(List.of());
+        }
         fire(l -> l.roomChanged(newRoom));
+    }
+
+    private void setChat(List<ChatMessage> messages) {
+        chat = List.copyOf(messages);
+        List<ChatMessage> snapshot = chat;
+        fire(l -> l.chatChanged(snapshot));
     }
 
     private void setMatch(MatchView newMatch) {
@@ -567,6 +631,7 @@ public final class GameClient {
         online = List.of();
         room = null;
         match = null;
+        chat = List.of();
         queue = null;
         loggingOut = false;
         kickReason = null;

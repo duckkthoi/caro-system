@@ -5,6 +5,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 import com.caro.client.model.PlayerInfo;
+import com.caro.client.model.RoomInfo;
 
 /** Vietnamese labels for the codes sent by the server. */
 final class Texts {
@@ -13,6 +14,10 @@ final class Texts {
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.systemDefault());
     private static final DateTimeFormatter DATE =
             DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(ZoneId.systemDefault());
+    private static final DateTimeFormatter TIME =
+            DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
+
+    static final String BLOCK_TWO_ENDS = "Luật chặn hai đầu";
 
     private Texts() {
     }
@@ -32,8 +37,25 @@ final class Texts {
             case "IN_QUEUE" -> "Đang tìm trận";
             case "IN_ROOM" -> "Trong phòng";
             case "PLAYING" -> "Đang đấu";
+            case "SPECTATING" -> "Đang xem";
             default -> status;
         };
+    }
+
+    static String botLevel(String level) {
+        return "EASY".equals(level) ? "Dễ" : "HARD".equals(level) ? "Khó" : level;
+    }
+
+    /** Short labels after a room name: against the bot, optional rule. */
+    static String roomTags(RoomInfo room) {
+        StringBuilder tags = new StringBuilder();
+        if (room.botLevel() != null) {
+            tags.append("  [Máy · ").append(botLevel(room.botLevel())).append("]");
+        }
+        if (room.blockTwoEnds()) {
+            tags.append("  [Chặn hai đầu]");
+        }
+        return tags.toString();
     }
 
     static String outcome(String outcome) {
@@ -80,6 +102,11 @@ final class Texts {
 
     static String signed(int value) {
         return value > 0 ? "+" + value : String.valueOf(value);
+    }
+
+    /** HH:mm of an epoch-ms time (chat). */
+    static String time(long epochMs) {
+        return TIME.format(Instant.ofEpochMilli(epochMs));
     }
 
     static String dateTime(Instant instant) {

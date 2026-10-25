@@ -2,6 +2,7 @@ package com.caro.client.app;
 
 import java.util.List;
 
+import com.caro.client.model.ChatMessage;
 import com.caro.client.model.Invitation;
 import com.caro.client.model.OnlineUser;
 import com.caro.client.model.QueueStatus;
@@ -42,6 +43,10 @@ public interface ClientListener {
     }
 
     default void queueChanged(QueueStatus status) {
+    }
+
+    /** The chat of my room changed (new message, or emptied when I changed room). */
+    default void chatChanged(List<ChatMessage> messages) {
     }
 
     default void invited(Invitation invitation) {

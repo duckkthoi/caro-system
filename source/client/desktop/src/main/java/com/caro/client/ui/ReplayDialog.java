@@ -35,7 +35,7 @@ final class ReplayDialog extends JDialog {
         MatchDetail.Summary m = detail.match();
         JLabel header = Ui.title("X: " + Texts.player(m.playerX()) + "   vs   O: " + Texts.player(m.playerO()));
         JLabel result = Ui.muted(Texts.result(m.result()) + " · " + Texts.reason(m.reason()) + " · "
-                + Texts.dateTime(m.endedAt()));
+                + Texts.dateTime(m.endedAt()) + (m.blockTwoEnds() ? " · " + Texts.BLOCK_TWO_ENDS : ""));
         JPanel top = new JPanel(new BorderLayout(0, 4));
         top.add(header, BorderLayout.NORTH);
         top.add(result, BorderLayout.SOUTH);

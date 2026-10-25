@@ -195,4 +195,48 @@ class GameClientLiveTest {
         d.await("invite match", () -> d.client.match() != null && d.client.match().isInProgress());
         assertEquals("X", d.read(() -> d.client.match().myMark()));
     }
+
+    @Test
+    void spectatorWatchesAndChatsThenPlaysTheBot() throws Exception {
+        Player a = player();
+        Player b = player();
+        Player c = player();
+        a.register();
+        b.register();
+        c.register();
+
+        String roomId = a.call(() -> a.client.createRoom("luật chặn hai đầu", true)).id();
+        assertTrue(a.read(() -> a.client.room().blockTwoEnds()));
+        b.call(() -> b.client.joinRoom(roomId));
+        a.await("match start", () -> a.client.match() != null && a.client.match().isInProgress());
+        a.call(() -> a.client.move(7, 7));
+
+        c.call(() -> c.client.spectate(roomId));
+        c.await("spectator sees the board", () -> c.client.match() != null && c.client.match().moveCount() == 1);
+        assertTrue(c.read(() -> c.client.isSpectating()));
+        assertTrue(c.read(() -> c.client.match().isSpectating() && !c.client.match().isMyTurn()));
+        assertTrue(c.read(() -> c.client.match().blockTwoEnds()));
+
+        b.call(() -> b.client.move(8, 8));
+        c.await("spectator gets the move", () -> c.client.match().moveCount() == 2);
+
+        c.call(() -> c.client.sendChat("Hay quá!"));
+        a.await("chat to players", () -> a.client.chat().size() == 1);
+        assertEquals("Hay quá!", a.read(() -> a.client.chat().get(0).text()));
+        assertTrue(a.read(() -> a.client.chat().get(0).spectator()));
+
+        c.call(() -> c.client.leaveRoom());
+        assertEquals(null, c.read(() -> c.client.room()));
+        assertTrue(c.read(() -> c.client.chat().isEmpty()));
+
+        // against the bot: unrated, the bot answers my move
+        c.call(() -> c.client.playBot("HARD", false));
+        c.await("bot match", () -> c.client.match() != null && c.client.match().isMyTurn());
+        assertTrue(!c.read(() -> c.client.match().isRated()));
+        c.call(() -> c.client.move(7, 7));
+        c.await("bot replied", () -> c.client.match().moveCount() == 2 && c.client.match().isMyTurn());
+        c.call(() -> c.client.resign());
+        c.await("bot match over", () -> c.client.match().isFinished());
+        assertEquals(1000, c.read(() -> c.client.me().rating()));
+    }
 }

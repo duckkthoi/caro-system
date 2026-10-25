@@ -44,6 +44,7 @@ final class HistoryDialog extends JDialog {
 
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setRowHeight(26);
+        Ui.wrapCells(table);
         table.setFillsViewportHeight(true);
         table.getSelectionModel().addListSelectionListener(e -> replay.setEnabled(table.getSelectedRow() >= 0));
         table.addMouseListener(LobbyPanel.onDoubleClick(this::replaySelected));

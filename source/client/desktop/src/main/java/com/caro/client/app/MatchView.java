@@ -20,7 +20,9 @@ public final class MatchView implements BoardModel {
     private final char[][] cells; // [y][x]: '.', 'X' or 'O'
     private final PlayerInfo playerX;
     private final PlayerInfo playerO;
-    private final String myMark;
+    private final String myMark;    // null when I am only watching
+    private final boolean blockTwoEnds;
+    private final boolean rated;
     private String status;          // IN_PROGRESS | PAUSED | FINISHED
     private String turn;
     private Long turnDeadline;      // server epoch ms, null unless IN_PROGRESS
@@ -41,6 +43,8 @@ public final class MatchView implements BoardModel {
         this.playerX = s.playerX();
         this.playerO = s.playerO();
         this.myMark = s.yourMark();
+        this.blockTwoEnds = s.blockTwoEnds();
+        this.rated = s.rated();
         this.status = s.status();
         this.turn = s.turn();
         this.turnDeadline = s.turnDeadline();
@@ -103,12 +107,27 @@ public final class MatchView implements BoardModel {
         return playerO;
     }
 
+    /** Only meaningful for a player, not for a spectator. */
     public PlayerInfo opponent() {
         return "X".equals(myMark) ? playerO : playerX;
     }
 
+    /** @return X, O, or null when I am only watching */
     public String myMark() {
         return myMark;
+    }
+
+    public boolean isSpectating() {
+        return myMark == null;
+    }
+
+    public boolean blockTwoEnds() {
+        return blockTwoEnds;
+    }
+
+    /** False against the bot: no Elo change. */
+    public boolean isRated() {
+        return rated;
     }
 
     public String status() {
@@ -132,7 +151,7 @@ public final class MatchView implements BoardModel {
     }
 
     public boolean isMyTurn() {
-        return isInProgress() && myMark.equals(turn);
+        return myMark != null && isInProgress() && myMark.equals(turn);
     }
 
     public int moveCount() {

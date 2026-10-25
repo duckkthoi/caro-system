@@ -42,6 +42,7 @@ final class LeaderboardDialog extends JDialog {
 
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setRowHeight(26);
+        Ui.wrapCells(table);
         table.setFillsViewportHeight(true);
         table.getColumnModel().getColumn(0).setMaxWidth(60);
         table.getColumnModel().getColumn(2).setMaxWidth(80);

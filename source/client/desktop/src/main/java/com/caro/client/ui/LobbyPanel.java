@@ -2,6 +2,7 @@ package com.caro.client.ui;
 
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
@@ -9,12 +10,15 @@ import java.util.function.Function;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.Timer;
 import javax.swing.table.AbstractTableModel;
@@ -26,7 +30,7 @@ import com.caro.client.model.QueueStatus;
 import com.caro.client.model.RoomInfo;
 import com.caro.client.model.UserInfo;
 
-/** Rooms, online players and quick match. */
+/** Rooms, online players, quick match and playing against the computer. */
 final class LobbyPanel extends JPanel implements ClientListener {
 
     private final GameClient client;
@@ -34,18 +38,21 @@ final class LobbyPanel extends JPanel implements ClientListener {
 
     private final JLabel greeting = Ui.title(" ");
     private final ListTableModel<RoomInfo> roomModel = new ListTableModel<>(
-            new String[] {"Phòng", "Chủ phòng", "Trạng thái", "Người chơi"},
-            r -> new Object[] {r.name(), Texts.player(r.host()), Texts.roomStatus(r.status()), r.players().size() + "/2"});
+            new String[] {"Phòng", "Chủ phòng", "Trạng thái", "Người chơi", "Xem"},
+            r -> new Object[] {r.name() + Texts.roomTags(r), Texts.player(r.host()), Texts.roomStatus(r.status()),
+                    r.players().size() + "/2", r.spectatorList().size()});
     private final ListTableModel<OnlineUser> onlineModel = new ListTableModel<>(
             new String[] {"Người chơi", "Elo", "Trạng thái"},
             u -> new Object[] {u.displayName() + " (" + u.username() + ")", u.rating(), Texts.presence(u.status())});
     private final JTable roomTable = table(roomModel);
     private final JTable onlineTable = table(onlineModel);
     private final JButton joinButton = new JButton("Vào phòng");
+    private final JButton spectateButton = new JButton("Xem");
     private final JButton inviteButton = new JButton("Mời chơi");
     private final JButton profileButton = new JButton("Xem hồ sơ");
     private final JButton quickButton = new JButton("Tìm trận nhanh");
     private final JLabel queueLabel = Ui.muted("Ghép ngẫu nhiên với người có Elo gần bạn.");
+    private static final int QUEUE_TEXT_WIDTH = 520;
     private final Timer queueTimer = new Timer(1000, e -> updateQueueLabel());
 
     LobbyPanel(GameClient client, MainFrame frame) {
@@ -70,9 +77,12 @@ final class LobbyPanel extends JPanel implements ClientListener {
         JButton createButton = new JButton("Tạo phòng");
         createButton.addActionListener(e -> createRoom(createButton));
         joinButton.addActionListener(e -> joinSelected());
-        roomTable.addMouseListener(onDoubleClick(this::joinSelected));
+        spectateButton.addActionListener(e -> spectateSelected());
+        roomTable.addMouseListener(onDoubleClick(this::joinOrWatchSelected));
         roomTable.getSelectionModel().addListSelectionListener(e -> updateButtons());
-        JPanel rooms = section("Phòng đang mở", roomTable, createButton, joinButton);
+        roomTable.getColumnModel().getColumn(3).setMaxWidth(90);
+        roomTable.getColumnModel().getColumn(4).setMaxWidth(60);
+        JPanel rooms = section("Phòng đang mở", roomTable, createButton, joinButton, spectateButton);
 
         // online players
         inviteButton.addActionListener(e -> inviteSelected());
@@ -91,13 +101,17 @@ final class LobbyPanel extends JPanel implements ClientListener {
         split.setBorder(null);
         add(split, BorderLayout.CENTER);
 
-        // quick match
+        // quick match and the bot
         JPanel quick = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         quick.setBorder(BorderFactory.createTitledBorder("Tìm trận nhanh"));
         quickButton.addActionListener(e -> toggleQueue());
         quick.add(quickButton);
         quick.add(queueLabel);
-        add(quick, BorderLayout.SOUTH);
+        // one above the other, so neither has to squeeze its text
+        JPanel south = new JPanel(new GridLayout(0, 1, 0, 4));
+        south.add(quick);
+        south.add(botPanel());
+        add(south, BorderLayout.SOUTH);
 
         updateButtons();
     }
@@ -141,17 +155,54 @@ final class LobbyPanel extends JPanel implements ClientListener {
     // ------------------------------------------------------------------ actions
 
     private void createRoom(JButton button) {
-        String name = JOptionPane.showInputDialog(this, "Tên phòng (để trống để dùng tên mặc định):", "Tạo phòng",
+        JTextField name = new JTextField(24);
+        JCheckBox blockTwoEnds = new JCheckBox("Luật chặn hai đầu (5 quân bị chặn cả hai đầu không tính thắng)");
+        JPanel form = new JPanel(new GridLayout(0, 1, 0, 6));
+        form.add(new JLabel("Tên phòng (để trống để dùng tên mặc định):"));
+        form.add(name);
+        form.add(blockTwoEnds);
+        int choice = JOptionPane.showConfirmDialog(this, form, "Tạo phòng", JOptionPane.OK_CANCEL_OPTION,
                 JOptionPane.PLAIN_MESSAGE);
-        if (name != null) { // null = cancelled
-            Ui.run(this, button, client.createRoom(name), null);
+        if (choice == JOptionPane.OK_OPTION) {
+            Ui.run(this, button, client.createRoom(name.getText(), blockTwoEnds.isSelected()), null);
         }
+    }
+
+    private JPanel botPanel() {
+        JComboBox<String> level = new JComboBox<>(new String[] {"Dễ", "Khó"});
+        JCheckBox blockTwoEnds = new JCheckBox("Chặn hai đầu");
+        JButton play = new JButton("Chơi với máy");
+        play.addActionListener(e -> Ui.run(this, play,
+                client.playBot(level.getSelectedIndex() == 0 ? "EASY" : "HARD", blockTwoEnds.isSelected()), null));
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        panel.setBorder(BorderFactory.createTitledBorder("Chơi với máy (không tính Elo)"));
+        panel.add(level);
+        panel.add(blockTwoEnds);
+        panel.add(play);
+        return panel;
     }
 
     private void joinSelected() {
         RoomInfo room = roomModel.at(roomTable.getSelectedRow());
         if (room != null && room.isWaiting()) {
             Ui.run(this, joinButton, client.joinRoom(room.id()), null);
+        }
+    }
+
+    private void spectateSelected() {
+        RoomInfo room = roomModel.at(roomTable.getSelectedRow());
+        if (room != null) {
+            Ui.run(this, spectateButton, client.spectate(room.id()), null);
+        }
+    }
+
+    /** Double click: take the free seat if there is one, otherwise watch. */
+    private void joinOrWatchSelected() {
+        RoomInfo room = roomModel.at(roomTable.getSelectedRow());
+        if (room != null && room.isWaiting()) {
+            joinSelected();
+        } else {
+            spectateSelected();
         }
     }
 
@@ -175,6 +226,7 @@ final class LobbyPanel extends JPanel implements ClientListener {
     private void updateButtons() {
         RoomInfo room = roomModel.at(roomTable.getSelectedRow());
         joinButton.setEnabled(room != null && room.isWaiting());
+        spectateButton.setEnabled(room != null);
         OnlineUser user = onlineModel.at(onlineTable.getSelectedRow());
         boolean notMe = user != null && client.me() != null && user.id() != client.me().id();
         inviteButton.setEnabled(notMe && user.invitable() && !client.isInQueue());
@@ -184,14 +236,14 @@ final class LobbyPanel extends JPanel implements ClientListener {
     private void updateQueueLabel() {
         QueueStatus q = client.queue();
         if (q == null || !q.inQueue()) {
-            queueLabel.setText("Ghép ngẫu nhiên với người có Elo gần bạn.");
+            queueLabel.setText(Ui.html("Ghép ngẫu nhiên với người có Elo gần bạn.", QUEUE_TEXT_WIDTH));
             updateButtons();
             return;
         }
         long waited = Math.max(0, client.serverNow() - (q.since() == null ? client.serverNow() : q.since()));
         String range = q.ratingRange() == null ? "bất kỳ ai" : "chênh lệch Elo ±" + q.ratingRange();
-        queueLabel.setText("Đang tìm đối thủ (" + range + ") · đã chờ " + Texts.clock(waited)
-                + " · " + q.queueSize() + " người trong hàng chờ");
+        queueLabel.setText(Ui.html("Đang tìm đối thủ (" + range + ") · đã chờ " + Texts.clock(waited)
+                + " · " + q.queueSize() + " người trong hàng chờ", QUEUE_TEXT_WIDTH));
         updateButtons();
     }
 
@@ -213,6 +265,7 @@ final class LobbyPanel extends JPanel implements ClientListener {
         table.setFillsViewportHeight(true);
         table.setRowHeight(26);
         table.getTableHeader().setReorderingAllowed(false);
+        Ui.wrapCells(table);
         return table;
     }
 

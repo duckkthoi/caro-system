@@ -38,13 +38,16 @@ hoặc bằng biến môi trường `CARO_HOST` / `CARO_PORT`.
 - Đăng ký, đăng nhập. Phiên chỉ có một: đăng nhập ở nơi khác thì phiên này bị đá ra.
 - Sảnh:
   - danh sách phòng và người online, cập nhật trực tiếp;
-  - tạo phòng, vào phòng;
+  - tạo phòng (có thể bật **luật chặn hai đầu**), vào phòng, **xem** phòng bất kỳ (nhấp đúp: vào chỗ trống nếu có, không thì xem);
   - mời người chơi;
-  - **tìm trận nhanh** (ghép theo Elo, hiện khoảng điểm đang tìm và thời gian chờ).
+  - **tìm trận nhanh** (ghép theo Elo, hiện khoảng điểm đang tìm và thời gian chờ);
+  - **chơi với máy** (Dễ/Khó, không tính Elo).
 - Phòng:
   - bàn cờ 15×15, đồng hồ 30 giây mỗi lượt (theo giờ server);
   - đánh dấu nước vừa đi, tô đường 5 quân thắng;
-  - đầu hàng, rời phòng, **chơi lại** (đổi quân).
+  - đầu hàng, rời phòng, **chơi lại** (đổi quân);
+  - **chat** với người trong phòng (khung `JTextArea` thuần văn bản, không diễn giải HTML);
+  - chế độ **người xem**: chỉ xem bàn cờ, đồng hồ và kết quả, nút "Thôi xem".
 - **Tự kết nối lại** khi mất mạng: thử lại mỗi 2 giây trong 30 giây; trận đấu tiếp tục đúng trạng thái cũ.
 - Hồ sơ và thống kê, lịch sử đấu, **xem lại từng nước** của trận đã đấu, bảng xếp hạng.
 
@@ -81,6 +84,6 @@ CARO_LIVE_PORT=9090 ./mvnw test                      # thêm GameClientLiveTest:
 | Test | Kiểm tra |
 |---|---|
 | `ConnectionTest` | Khớp `reqId` khi trả lời không theo thứ tự, lỗi `ERROR` thành `ServerException`, PING và độ lệch đồng hồ, server đóng kết nối thì request đang chờ thất bại và `onClosed` chỉ gọi một lần |
-| `GameClientLiveTest` | Một ván đầy đủ rồi chơi lại (đổi quân), lịch sử và xem lại; mất mạng giữa trận rồi tự kết nối lại và đánh tiếp; ghép trận nhanh; mời và nhận lời mời |
+| `GameClientLiveTest` | Một ván đầy đủ rồi chơi lại (đổi quân), lịch sử và xem lại; mất mạng giữa trận rồi tự kết nối lại và đánh tiếp; ghép trận nhanh; mời và nhận lời mời; xem phòng chặn hai đầu, chat, rồi chơi với máy |
 
 Ảnh chụp màn hình cho README được tạo tự động bằng `ScreenshotTour` (trong `src/test`, xem hướng dẫn ở đầu file đó).

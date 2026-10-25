@@ -136,9 +136,10 @@ public final class MainFrame extends JFrame implements ClientListener {
         }
     }
 
+    /** Wraps inside the status bar instead of being cut with "..." when the window is narrow. */
     @Override
     public void notice(String text) {
-        noticeLabel.setText(text);
+        noticeLabel.setText(Ui.html(text, Math.max(200, getWidth() - 320)));
         noticeTimer.restart();
     }
 }
