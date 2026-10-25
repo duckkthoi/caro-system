@@ -66,6 +66,15 @@ input[type="range"] { width: 100%; padding: 0; }
 .status-WAITING, .presence-IDLE, .account-ACTIVE { background: #e8f5e9; color: var(--success); }
 .status-PLAYING, .presence-PLAYING { background: #fdecea; color: var(--danger); }
 .presence-IN_QUEUE { background: #e8f0fe; color: var(--primary); }
+.presence-SPECTATING { background: #f3e8fd; color: #7b1fa2; }
+.badge.tag { margin-left: 0.4rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.check { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.9rem; white-space: nowrap; }
+.check input { width: auto; }
+select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.actions-cell { white-space: nowrap; }
+.actions-cell button + button { margin-left: 0.3rem; }
+.bot-form { margin-bottom: 0; align-items: center; }
 .account-LOCKED { background: #fdecea; color: var(--danger); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34a853; vertical-align: middle; }
 .count { color: var(--muted); font-weight: normal; }
@@ -114,6 +123,7 @@ tr.me td { background: #f0f6ff; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
 .inline-form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
 .section-head .inline-form { margin-bottom: 0; }
+.section-head .inline-form input:not([type]) { width: 15rem; } /* the whole placeholder stays visible */
 .empty { padding: 1rem 0; }
 .quick { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .quick.searching { border-color: #bfd3fb; background: #f5f9ff; }
@@ -135,6 +145,14 @@ tr.me td { background: #f0f6ff; }
 .clock.low { color: var(--danger); }
 .status { text-align: center; min-height: 2.6em; }
 .side-actions { display: flex; flex-direction: column; gap: 0.45rem; }
+.spectators { font-size: 0.85rem; margin: 0; }
+.chat { display: flex; flex-direction: column; gap: 0.4rem; border-top: 1px solid var(--border); padding-top: 0.6rem; }
+.chat h3 { margin: 0; font-size: 0.95rem; }
+.chat-log { height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; }
+.chat-log p { margin: 0; overflow-wrap: anywhere; }
+.chat-log p.mine strong { color: var(--primary); }
+.chat-form { display: flex; gap: 0.4rem; }
+.chat-form input { flex: 1; min-width: 0; }
 
 /* ---- board ---- */
 .board-wrap { width: min(100%, calc(100vh - 110px)); aspect-ratio: 1; margin: 0 auto; }

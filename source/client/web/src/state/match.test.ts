@@ -9,6 +9,7 @@ import {
   finish,
   fromState,
   isMyTurn,
+  myRatingChange,
   opponentDisconnected,
   opponentReconnected,
   positionAfter,
@@ -17,11 +18,13 @@ import {
 
 const empty = Array.from({ length: 15 }, () => '.'.repeat(15));
 
-function start(yourMark: 'X' | 'O'): MatchState {
+function start(yourMark: 'X' | 'O' | null): MatchState {
   return {
     matchId: 'm1',
     roomId: 'R1',
     boardSize: 15,
+    blockTwoEnds: false,
+    rated: true,
     playerX: { id: 1, username: 'an', displayName: 'An', rating: 1000 },
     playerO: { id: 2, username: 'binh', displayName: 'Bình', rating: 1000 },
     yourMark,
@@ -88,4 +91,15 @@ test('replay positions', () => {
   assert.equal(positionAfter(15, moves, 1)[7][7], 'X');
   assert.equal(positionAfter(15, moves, 1)[8][8], '.');
   assert.equal(positionAfter(15, moves, 2)[8][8], 'O');
+});
+
+test('a spectator never has the turn and gets no rating change', () => {
+  const watching = fromState(start(null));
+  assert.equal(isMyTurn(watching), false);
+  assert.equal(canPlay(watching, 7, 7), false);
+  const ended = finish(watching, {
+    matchId: 'm1', result: 'X_WIN', reason: 'RESIGN', winnerId: 1, ratingChange: { X: 16, O: -16 },
+  });
+  assert.equal(myRatingChange(ended, ended.result!), 0);
+  assert.equal(myRatingChange(fromState(start('O')), ended.result!), -16);
 });

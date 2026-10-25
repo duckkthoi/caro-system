@@ -202,7 +202,10 @@ function ReplayModal({ matchId, onClose }: { matchId: string; onClose: () => voi
         <span className="muted"> vs </span>
         <strong><span className="mark mark-O">O</span> {T.player(m.playerO)}</strong>
       </p>
-      <p className="muted">{T.result[m.result]} · {T.reason[m.reason]} · {T.dateTime(m.endedAt)}</p>
+      <p className="muted">
+        {T.result[m.result]} · {T.reason[m.reason]} · {T.dateTime(m.endedAt)}
+        {m.blockTwoEnds && ` · ${T.BLOCK_TWO_ENDS}`}
+      </p>
       <Board
         board={positionAfter(15, data.moves, shown)}
         lastMove={last ? [last.x, last.y] : null}

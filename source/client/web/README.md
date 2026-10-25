@@ -49,11 +49,14 @@ nên mỗi tab đăng nhập được một tài khoản khác nhau. Tải lại
 - Đăng nhập, đăng ký. Bị đá ra nếu tài khoản đăng nhập ở nơi khác hoặc bị khóa.
 - Sảnh:
   - danh sách phòng và người online (cập nhật trực tiếp);
-  - tạo phòng, vào phòng, mời người chơi;
-  - **tìm trận nhanh** theo Elo.
+  - tạo phòng (có thể bật **luật chặn hai đầu**), vào phòng, **xem** phòng bất kỳ, mời người chơi;
+  - **tìm trận nhanh** theo Elo;
+  - **chơi với máy** (Dễ/Khó, không tính Elo).
 - Phòng:
   - bàn cờ 15×15, đồng hồ theo giờ server, tô nước vừa đi và đường thắng;
-  - đầu hàng, rời phòng, **chơi lại (đổi quân)**.
+  - đầu hàng, rời phòng, **chơi lại (đổi quân)**;
+  - **chat** với người chơi và người xem (React tự escape, tin nhắn luôn là văn bản thuần);
+  - chế độ **người xem**: không đi được, chỉ có nút "Thôi xem".
 - Lời mời: hiện ở góc màn hình, có đếm ngược, tự đóng khi server báo `INVITE_CLOSED`.
 - **Tự kết nối lại** khi mất mạng: thử mỗi 2 giây trong 30 giây; trận tiếp tục.
 - Hồ sơ, lịch sử đấu, **xem lại từng nước**, bảng xếp hạng.

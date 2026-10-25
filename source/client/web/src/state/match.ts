@@ -8,9 +8,11 @@ export interface MatchView {
   roomId: string;
   size: number;
   board: string[]; // rows y = 0..size-1, chars '.', 'X', 'O'
+  blockTwoEnds: boolean;
+  rated: boolean;
   playerX: PlayerInfo;
   playerO: PlayerInfo;
-  myMark: Mark;
+  myMark: Mark | null; // null when I am only watching
   status: MatchStatus;
   turn: Mark | null;
   turnDeadline: number | null; // server epoch ms, only while IN_PROGRESS
@@ -27,6 +29,8 @@ export function fromState(s: MatchState): MatchView {
     roomId: s.roomId,
     size: s.boardSize,
     board: s.board,
+    blockTwoEnds: s.blockTwoEnds,
+    rated: s.rated,
     playerX: s.playerX,
     playerO: s.playerO,
     myMark: s.yourMark,
@@ -69,7 +73,7 @@ export function opponentReconnected(m: MatchView, turnDeadline: number): MatchVi
 }
 
 export function isMyTurn(m: MatchView): boolean {
-  return m.status === 'IN_PROGRESS' && m.turn === m.myMark;
+  return m.myMark !== null && m.status === 'IN_PROGRESS' && m.turn === m.myMark;
 }
 
 export function canPlay(m: MatchView, x: number, y: number): boolean {
@@ -83,8 +87,14 @@ export function turnTimeLeft(m: MatchView, serverNow: number): number {
   return m.status === 'PAUSED' ? m.pausedTimeLeftMs : 0;
 }
 
+/** Only meaningful for a player, not for a spectator. */
 export function opponentOf(m: MatchView): PlayerInfo {
   return m.myMark === 'X' ? m.playerO : m.playerX;
+}
+
+/** My rating change in a finished match: 0 for spectators and unrated matches. */
+export function myRatingChange(m: MatchView, result: MatchResult): number {
+  return m.myMark === null ? 0 : result.ratingChange?.[m.myMark] ?? 0;
 }
 
 /** Board after the first `count` moves of a stored match (replay). */

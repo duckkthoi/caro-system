@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 import type {
+  BotLevel,
+  ChatMessage,
   Invitation,
   MatchResult,
   MatchState,
@@ -25,14 +27,19 @@ export interface Notice {
   kind: 'info' | 'error';
 }
 
+export interface ChatLine extends ChatMessage {
+  id: number;
+}
+
 export interface State {
   connection: ConnectionStatus;
   token: string | null;
   me: UserInfo | null;
   rooms: RoomInfo[];
   online: OnlineUser[];
-  room: RoomInfo | null;
+  room: RoomInfo | null; // the room I play in, or the room I watch
   match: MatchView | null;
+  chat: ChatLine[]; // messages of the current room since I entered it
   queue: QueueStatus | null;
   invites: Invitation[]; // received, waiting for my answer
   outgoing: { inviteId: string; name: string } | null;
@@ -44,6 +51,7 @@ const TOKEN_KEY = 'caro.token'; // sessionStorage: one account per browser tab
 const RECONNECT_INTERVAL_MS = 2_000;
 const RECONNECT_WINDOW_MS = 30_000; // the server keeps a match waiting this long (docs/rules.md, section 4)
 const NOTICE_MS = 6_000;
+const CHAT_KEEP = 100;
 
 const initial: State = {
   connection: 'disconnected',
@@ -53,6 +61,7 @@ const initial: State = {
   online: [],
   room: null,
   match: null,
+  chat: [],
   queue: null,
   invites: [],
   outgoing: null,
@@ -77,6 +86,7 @@ class GameStore {
   private kickReason: string | null = null;
   private reconnectUntil = 0;
   private noticeSeq = 0;
+  private chatSeq = 0;
   private restoreStarted = false;
 
   subscribe = (listener: () => void): (() => void) => {
@@ -130,13 +140,22 @@ class GameStore {
 
   // ---------------------------------------------------------------- lobby
 
-  createRoom = (name: string) => this.roomRequest('CREATE_ROOM', name.trim() ? { name: name.trim() } : {});
+  createRoom = (name: string, blockTwoEnds: boolean) =>
+    this.roomRequest('CREATE_ROOM', name.trim() ? { name: name.trim(), blockTwoEnds } : { blockTwoEnds });
   joinRoom = (roomId: string) => this.roomRequest('JOIN_ROOM', { roomId });
+  /** MATCH_STATE (if any) arrives before the reply, see protocol.md. */
+  spectate = (roomId: string) => this.roomRequest('SPECTATE', { roomId });
+  playBot = (level: BotLevel, blockTwoEnds: boolean) => this.roomRequest('PLAY_BOT', { level, blockTwoEnds });
   rematch = () => this.roomRequest('REMATCH');
 
+  /** Leaves my room, or stops watching. */
   async leaveRoom(): Promise<void> {
     await this.request('LEAVE_ROOM');
-    this.set({ room: null, match: null });
+    this.set({ room: null, match: null, chat: [] });
+  }
+
+  async sendChat(text: string): Promise<void> {
+    await this.request('CHAT', { text });
   }
 
   async quickMatch(): Promise<void> {
@@ -292,7 +311,10 @@ class GameStore {
     this.request<{ rooms: RoomInfo[] }>('LIST_ROOMS').then((d) => this.set({ rooms: d.rooms })).catch(() => undefined);
     this.request<{ users: OnlineUser[] }>('LIST_ONLINE').then((d) => this.set({ online: d.users })).catch(() => undefined);
     this.request<{ room: RoomInfo | null; match: MatchState | null; queue: QueueStatus }>('GET_STATE')
-      .then((d) => this.set({ room: d.room, match: d.match ? M.fromState(d.match) : null, queue: d.queue }))
+      .then((d) => {
+        this.setRoom(d.room);
+        this.set({ match: d.match ? M.fromState(d.match) : null, queue: d.queue });
+      })
       .catch(() => undefined);
   }
 
@@ -326,13 +348,27 @@ class GameStore {
       case 'OPPONENT_DISCONNECTED':
         if (current(data.matchId)) {
           this.set({ match: M.opponentDisconnected(match!, data.graceDeadline, this.serverNow()) });
-          this.notify('Đối thủ mất kết nối. Trận tạm dừng trong lúc chờ đối thủ quay lại.');
+          this.notify(match!.myMark
+            ? 'Đối thủ mất kết nối. Trận tạm dừng trong lúc chờ đối thủ quay lại.'
+            : 'Một người chơi mất kết nối. Trận tạm dừng.');
         }
         break;
       case 'OPPONENT_RECONNECTED':
         if (current(data.matchId)) {
           this.set({ match: M.opponentReconnected(match!, data.turnDeadline) });
-          this.notify('Đối thủ đã kết nối lại. Trận tiếp tục.');
+          this.notify(match!.myMark ? 'Đối thủ đã kết nối lại. Trận tiếp tục.' : 'Người chơi đã kết nối lại.');
+        }
+        break;
+      case 'CHAT_MESSAGE':
+        if (this.state.room?.id === (data as ChatMessage).roomId) {
+          const line = { ...(data as ChatMessage), id: ++this.chatSeq };
+          this.set({ chat: [...this.state.chat, line].slice(-CHAT_KEEP) });
+        }
+        break;
+      case 'SPECTATE_ENDED':
+        if (this.state.room?.id === data.roomId) {
+          this.set({ room: null, match: null, chat: [] });
+          this.notify('Phòng bạn đang xem đã đóng.');
         }
         break;
       case 'QUEUE_STATUS':
@@ -359,7 +395,7 @@ class GameStore {
 
   private matchEnded(match: MatchView, result: MatchResult): void {
     const me = this.state.me;
-    const change = result.ratingChange?.[match.myMark] ?? 0;
+    const change = M.myRatingChange(match, result);
     this.set({
       match: M.finish(match, result),
       me: me && change !== 0 ? { ...me, rating: me.rating + change } : me,
@@ -382,10 +418,12 @@ class GameStore {
     }
   }
 
+  /** Entering another room drops the match and the chat of the previous one. */
   private setRoom(room: RoomInfo | null): void {
     const match = this.state.match;
     const otherRoom = room !== null && match !== null && match.roomId !== room.id;
-    this.set({ room, match: otherRoom ? null : match });
+    const sameRoom = room !== null && this.state.room?.id === room.id;
+    this.set({ room, match: otherRoom ? null : match, chat: sameRoom ? this.state.chat : [] });
   }
 
   private async roomRequest(type: string, data: object = {}): Promise<RoomInfo> {
@@ -426,6 +464,11 @@ export const store = new GameStore();
 
 export function useStore(): State {
   return useSyncExternalStore(store.subscribe, store.getState);
+}
+
+/** True when I am only watching the room (docs/rules.md, section 10). */
+export function isSpectating(room: RoomInfo | null, me: UserInfo | null): boolean {
+  return room !== null && me !== null && room.spectators.some((p) => p.id === me.id);
 }
 
 /** The latest info of a player from my room (ratings change after a match). */

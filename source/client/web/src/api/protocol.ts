@@ -19,6 +19,11 @@ export interface PlayerInfo {
 
 export type RoomStatus = 'WAITING' | 'PLAYING' | 'FINISHED';
 
+export type BotLevel = 'EASY' | 'HARD';
+
+/** The bot shows up in RoomInfo.players with this id. */
+export const BOT_ID = -1;
+
 export interface RoomInfo {
   id: string;
   name: string;
@@ -27,6 +32,9 @@ export interface RoomInfo {
   players: PlayerInfo[];
   matchId: string | null;
   rematchRequests: number[];
+  blockTwoEnds: boolean;
+  botLevel: BotLevel | null;
+  spectators: PlayerInfo[];
 }
 
 export type MatchStatus = 'IN_PROGRESS' | 'PAUSED' | 'FINISHED';
@@ -46,9 +54,11 @@ export interface MatchState {
   matchId: string;
   roomId: string;
   boardSize: number;
+  blockTwoEnds: boolean;
+  rated: boolean;
   playerX: PlayerInfo;
   playerO: PlayerInfo;
-  yourMark: Mark;
+  yourMark: Mark | null; // null for spectators
   status: MatchStatus;
   turn: Mark | null;
   moveCount: number;
@@ -69,7 +79,7 @@ export interface MoveApplied {
   turnDeadline: number | null;
 }
 
-export type Presence = 'IDLE' | 'IN_QUEUE' | 'IN_ROOM' | 'PLAYING';
+export type Presence = 'IDLE' | 'IN_QUEUE' | 'IN_ROOM' | 'PLAYING' | 'SPECTATING';
 
 export interface OnlineUser {
   id: number;
@@ -84,6 +94,14 @@ export interface QueueStatus {
   since: number | null;
   ratingRange: number | null;
   queueSize: number;
+}
+
+export interface ChatMessage {
+  roomId: string;
+  from: PlayerInfo;
+  spectator: boolean;
+  text: string;
+  sentAt: number;
 }
 
 export interface Invitation {
@@ -136,6 +154,7 @@ export interface MatchSummary {
   result: MatchResult['result'];
   reason: EndReason;
   winnerId: number | null;
+  blockTwoEnds: boolean;
   ratingChange: Record<Mark, number>;
   totalMoves: number;
   startedAt: string;

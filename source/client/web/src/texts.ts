@@ -1,5 +1,5 @@
 // Vietnamese labels for the codes sent by the server.
-import type { EndReason, PlayerInfo, Presence, RoomStatus } from './api/protocol';
+import type { BotLevel, EndReason, PlayerInfo, Presence, RoomStatus } from './api/protocol';
 
 export const roomStatus: Record<RoomStatus, string> = {
   WAITING: 'Đang chờ',
@@ -12,7 +12,20 @@ export const presence: Record<Presence, string> = {
   IN_QUEUE: 'Đang tìm trận',
   IN_ROOM: 'Trong phòng',
   PLAYING: 'Đang đấu',
+  SPECTATING: 'Đang xem',
 };
+
+export const botLevel: Record<BotLevel, string> = {
+  EASY: 'Dễ',
+  HARD: 'Khó',
+};
+
+export const BLOCK_TWO_ENDS = 'Luật chặn hai đầu';
+
+/** Players who can be invited (docs/rules.md, sections 8.3 and 10). */
+export function invitable(status: Presence): boolean {
+  return status === 'IDLE' || status === 'IN_QUEUE' || status === 'SPECTATING';
+}
 
 export const outcome: Record<string, string> = {
   WIN: 'Thắng',
@@ -49,6 +62,11 @@ export function player(p: PlayerInfo | null | undefined): string {
 export function clock(ms: number): string {
   const s = Math.ceil(Math.max(0, ms) / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** HH:mm of an epoch-ms time (chat). */
+export function time(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 }
 
 export function dateTime(iso: string): string {
