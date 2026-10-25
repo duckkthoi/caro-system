@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: caro
       POSTGRES_PASSWORD: caro
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"   # POSTGRES_PORT=5433 if the machine already runs PostgreSQL on 5432
     volumes:
       - caro-db:/var/lib/postgresql/data
     healthcheck:

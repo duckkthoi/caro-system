@@ -39,8 +39,10 @@ Hai loại client **đấu được với nhau trong cùng một trận**, vì c
 |---|---|
 | Tài khoản | Đăng ký, đăng nhập (JWT, mật khẩu băm BCrypt). Mỗi tài khoản chỉ một phiên: đăng nhập nơi khác sẽ đá phiên cũ |
 | Sảnh | Danh sách phòng và người online cập nhật trực tiếp; tạo/vào phòng; **mời người chơi**; **tìm trận nhanh** theo Elo |
-| Trận đấu | Bàn 15×15, 5 quân liên tiếp thắng, 30 giây mỗi lượt, đầu hàng, **chơi lại (đổi quân)** |
-| Độ tin cậy | Heartbeat (PING 10 giây); mất mạng giữa trận thì trận **tạm dừng 30 giây** chờ người chơi tự kết nối lại |
+| Trận đấu | Bàn 15×15, 5 quân liên tiếp thắng, 30 giây mỗi lượt, đầu hàng, **chơi lại (đổi quân)**, tùy chọn **luật chặn hai đầu** khi tạo phòng |
+| Trong phòng | **Xem trận** (tối đa 10 người xem mỗi phòng) và **chat** giữa người chơi và người xem |
+| Chơi với máy | Bot hai mức Dễ/Khó chạy trong server, đi qua đúng luật của người thật; không tính Elo, không lưu lịch sử |
+| Độ tin cậy | Heartbeat (PING 10 giây); mất mạng giữa trận thì trận **tạm dừng 30 giây** chờ người chơi tự kết nối lại; **giới hạn tần suất** (rate limit) theo kết nối để chống spam |
 | Dữ liệu | Elo (K=32), lịch sử đấu, **xem lại từng nước** của trận đã đấu, thống kê thắng/thua, bảng xếp hạng |
 | Quản trị | Thống kê hệ thống, tìm/khóa/mở khóa tài khoản (người đang chơi bị đá ra ngay), xem phòng và trận |
 
@@ -114,8 +116,8 @@ Chi tiết: [server](source/server/README.md) · [client desktop](source/client/
 ### Kiểm thử
 
 ```bash
-cd source/server && ./mvnw test                 # 42 test: luật chơi, Elo, ghép trận, integration qua TCP + WebSocket
-cd source/client/desktop && ./mvnw test         # tầng kết nối với server giả
+cd source/server && ./mvnw test                 # 68 test: luật chơi, Elo, ghép trận, bot, rate limit, integration qua TCP + WebSocket
+cd source/client/desktop && ./mvnw test         # tầng kết nối với server giả (thêm CARO_LIVE_PORT=9090 để chạy 4 test với server thật)
 cd source/client/web && npm test                # logic bàn cờ phía client
 ```
 
@@ -140,7 +142,10 @@ cd source/client/web && npm test                # logic bàn cờ phía client
 | `POST /api/auth/register` | HTTP | `{"username","password","displayName"?}` | `UserInfo` |
 | `POST /api/auth/login` | HTTP | `{"username","password"}` | `{"token","user"}` |
 | `LOGIN` / `AUTH` | TCP/WS | `{"username","password"}` / `{"token"}` | `OK {"token"?,"user"}` |
-| `CREATE_ROOM` / `JOIN_ROOM` / `LEAVE_ROOM` | TCP/WS | `{"name"?}` / `{"roomId"}` / (không có) | `OK {"room"}` cùng các sự kiện `ROOM_LIST`, `ROOM_UPDATE` |
+| `CREATE_ROOM` / `JOIN_ROOM` / `LEAVE_ROOM` | TCP/WS | `{"name"?,"blockTwoEnds"?}` / `{"roomId"}` / (không có) | `OK {"room"}` cùng các sự kiện `ROOM_LIST`, `ROOM_UPDATE` |
+| `SPECTATE` | TCP/WS | `{"roomId"}` | `OK {"room"}`, trước đó là `MATCH_STATE`; sau đó nhận mọi sự kiện trận như người chơi. Rời bằng `LEAVE_ROOM` |
+| `CHAT` | TCP/WS | `{"text"}` (1–200 ký tự) | `OK`; mọi người trong phòng nhận `CHAT_MESSAGE` |
+| `PLAY_BOT` | TCP/WS | `{"level"?: "EASY"\|"HARD","blockTwoEnds"?}` | `OK {"room"}` cùng `MATCH_START`; máy đi sau khoảng 0,5 giây |
 | `MOVE` | TCP/WS | `{"matchId","x","y"}` | `OK {"moveNo"}` cùng các sự kiện `MOVE_APPLIED`, `MATCH_END` |
 | `RESIGN` | TCP/WS | `{"matchId"}` | `OK` cùng sự kiện `MATCH_END` |
 | `PING` | TCP/WS | (không có) | `PONG {"serverTime"}` (heartbeat mỗi 10 giây) |
@@ -208,10 +213,18 @@ sequenceDiagram
 | Nhận lời mời (hết hạn sau 20 giây) | Đối thủ mất kết nối: trận tạm dừng, chờ 30 giây |
 | ![Quản trị](./statics/screenshots/web-admin.png) | ![Xem lại web](./statics/screenshots/web-replay.png) |
 | Trang quản trị | Xem lại trận |
+| ![Xem trận web](./statics/screenshots/web-spectating.png) | ![Chơi với máy web](./statics/screenshots/web-bot.png) |
+| Xem trận và chat (tin nhắn hiển thị dạng văn bản thuần) | Chơi với máy mức khó |
+
+| Tính năng mở rộng trên client desktop | |
+|---|---|
+| ![Xem trận desktop](./statics/screenshots/desktop-spectating.png) | ![Chơi với máy desktop](./statics/screenshots/desktop-bot.png) |
+| Xem phòng có luật chặn hai đầu và chat | Chơi với máy |
 
 **Đã kiểm chứng:**
 - Toàn bộ test tự động đều qua. Phía server có client TCP đấu với client WebSocket thật, kết nối lại giữa trận,
-  ghép trận, lời mời, khóa tài khoản.
+  ghép trận, lời mời, khóa tài khoản, người xem, chat, chơi với máy, luật chặn hai đầu và rate limit.
+- Người xem, chat và chơi với máy được chạy thử trên cả hai client với server thật.
 - Client desktop được chạy với server thật: ván đấu, chơi lại, kết nối lại, ghép trận.
 - Client web được chạy trên trình duyệt thật: đăng ký, chơi, chơi lại, xem lại, mời, mất mạng rồi tự kết nối lại,
   trang quản trị. Không có lỗi trên console.
@@ -235,7 +248,8 @@ caro-system/
     ├── server/                  # Spring Boot (xem server/README.md)
     │   └── src/main/java/com/caro/server/
     │       ├── net/             # lõi giao thức; net/tcp (ServerSocket), net/ws (WebSocket)
-    │       ├── lobby/           # phòng, danh sách online, ghép trận, lời mời, chơi lại
+    │       ├── lobby/           # phòng, người xem, chat, danh sách online, ghép trận, lời mời, chơi lại
+    │       ├── bot/             # đối thủ máy (chọn nước đi + nối vào trận)
     │       ├── match/           # trận đấu (luật, đồng hồ, kết nối lại) và lưu kết quả
     │       ├── game/            # bàn cờ, kiểm tra 5 quân, Elo (Java thuần)
     │       ├── player/          # hồ sơ, lịch sử, bảng xếp hạng (REST + socket)
@@ -253,11 +267,14 @@ caro-system/
 
 ## 🧩 HƯỚNG PHÁT TRIỂN THÊM
 
-- [ ] Chat trong phòng (thông điệp `CHAT`), có lọc từ ngữ.
-- [ ] Người xem trận (spectator) và phát lại trực tiếp cho người xem.
-- [ ] Tùy chọn luật khi tạo phòng: chặn hai đầu, bàn 19×19, thời gian mỗi lượt.
-- [ ] Bot đánh cùng máy để luyện tập.
-- [ ] Giới hạn tần suất request (rate limit) để chống spam.
+- [x] Chat trong phòng (thông điệp `CHAT`).
+- [x] Người xem trận (spectator).
+- [x] Tùy chọn luật chặn hai đầu khi tạo phòng.
+- [x] Bot đánh cùng máy để luyện tập (mức Dễ/Khó).
+- [x] Giới hạn tần suất request (rate limit) để chống spam.
+- [ ] Lọc từ ngữ trong chat; lưu lịch sử chat của trận.
+- [ ] Thêm tùy chọn khi tạo phòng: bàn 19×19, thời gian mỗi lượt.
+- [ ] Bot mạnh hơn: tìm kiếm nhiều nước (minimax / alpha-beta) thay vì chỉ chấm điểm một nước.
 - [ ] Lưu trạng thái trận đang chơi (Redis) để server khởi động lại không mất trận, và chạy được nhiều instance.
 - [ ] Gửi danh sách online dạng thay đổi (delta) thay vì cả danh sách, để chịu được nhiều người hơn.
 
