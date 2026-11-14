@@ -30,6 +30,7 @@ public final class MatchView implements BoardModel {
     private Long graceDeadline;     // while the opponent is disconnected
     private int moveCount;
     private int[] lastMove;
+    private Long drawOfferFrom;     // player waiting for an answer to their draw offer
     private MatchResult result;
 
     private MatchView(MatchState s) {
@@ -51,6 +52,7 @@ public final class MatchView implements BoardModel {
         this.pausedTimeLeftMs = s.turnTimeLeftMs();
         this.moveCount = s.moveCount();
         this.lastMove = s.lastMove() == null ? null : new int[] {s.lastMove().x(), s.lastMove().y()};
+        this.drawOfferFrom = s.drawOfferFrom();
         this.result = s.result();
     }
 
@@ -64,11 +66,21 @@ public final class MatchView implements BoardModel {
         moveCount = m.moveNo();
         turn = m.nextTurn();
         turnDeadline = m.turnDeadline();
+        drawOfferFrom = null; // a move closes any draw offer
+    }
+
+    void drawOffered(long fromId) {
+        drawOfferFrom = fromId;
+    }
+
+    void drawOfferClosed() {
+        drawOfferFrom = null;
     }
 
     void finish(MatchResult r) {
         status = "FINISHED";
         result = r;
+        drawOfferFrom = null;
         turn = null;
         turnDeadline = null;
         graceDeadline = null;
@@ -168,6 +180,11 @@ public final class MatchView implements BoardModel {
             return Math.max(0, turnDeadline - serverNow);
         }
         return isPaused() ? pausedTimeLeftMs : 0;
+    }
+
+    /** Id of the player whose draw offer waits for an answer, or null. */
+    public Long drawOfferFrom() {
+        return drawOfferFrom;
     }
 
     public Long graceDeadline() {

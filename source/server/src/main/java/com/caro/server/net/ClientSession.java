@@ -31,6 +31,7 @@ public abstract class ClientSession {
 
     private final String id;
     private final String remoteAddress;
+    private final String clientIp;
     private final BlockingQueue<String> outbound;
     private final AtomicBoolean closing = new AtomicBoolean();
     private final AtomicBoolean released = new AtomicBoolean();
@@ -39,9 +40,11 @@ public abstract class ClientSession {
     private volatile RateLimiter messageLimiter; // set by MessageDispatcher.onOpen
     private volatile RateLimiter chatLimiter;
 
-    protected ClientSession(String transport, String remoteAddress, int maxOutboundQueue) {
+    /** @param clientIp the user's IP address (see ClientIp), used to limit login attempts */
+    protected ClientSession(String transport, String remoteAddress, String clientIp, int maxOutboundQueue) {
         this.id = transport + "-" + SEQ.incrementAndGet();
         this.remoteAddress = remoteAddress;
+        this.clientIp = clientIp;
         this.outbound = new LinkedBlockingQueue<>(maxOutboundQueue);
     }
 
@@ -112,6 +115,10 @@ public abstract class ClientSession {
 
     public String remoteAddress() {
         return remoteAddress;
+    }
+
+    public String clientIp() {
+        return clientIp;
     }
 
     public void touch() {

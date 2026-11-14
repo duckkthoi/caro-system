@@ -65,8 +65,8 @@ final class Invites implements ClientListener {
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         list.setSelectedIndex(0);
         list.setCellRenderer((l, u, index, selected, focus) -> {
-            JLabel label = new JLabel(u.displayName() + " (@" + u.username() + ") · Elo " + u.rating()
-                    + " · " + Texts.presence(u.status()));
+            JLabel label = new JLabel(Ui.html(u.displayName() + " (@" + u.username() + ") · Elo " + u.rating()
+                    + " · " + Texts.presence(u.status()))); // escaped: a name is never read as HTML
             label.setBorder(Ui.padding(4));
             label.setOpaque(true);
             label.setBackground(selected ? l.getSelectionBackground() : l.getBackground());

@@ -288,4 +288,38 @@ class GameMatchTest {
         assertThat(match.snapshotFor(O).turn()).isEqualTo(Mark.O);
         assertThat(match.snapshotFor(O).blockTwoEnds()).isTrue();
     }
+
+    @Test
+    void drawOfferCanBeDeclinedClosedByAMoveOrAccepted() {
+        long spectator = 3;
+        GameMatch match = newMatch(MatchOptions.STANDARD, List.of(spectator));
+        assertError(() -> match.answerDraw(O, true), ErrorCode.NO_DRAW_OFFER);
+
+        match.offerDraw(X);
+        assertThat(count(O, ServerMessageType.DRAW_OFFERED)).isEqualTo(1);
+        assertThat(count(spectator, ServerMessageType.DRAW_OFFERED)).isEqualTo(1);
+        assertThat(count(X, ServerMessageType.DRAW_OFFERED)).isZero();
+        assertThat(match.snapshotFor(O).drawOfferFrom()).isEqualTo(X);
+        assertError(() -> match.offerDraw(O), ErrorCode.DRAW_OFFER_NOT_ALLOWED); // one at a time
+        assertError(() -> match.answerDraw(X, true), ErrorCode.NO_DRAW_OFFER);   // not your own
+        assertError(() -> match.answerDraw(spectator, true), ErrorCode.MATCH_NOT_FOUND);
+
+        match.answerDraw(O, false);
+        assertThat(count(X, ServerMessageType.DRAW_OFFER_CLOSED)).isEqualTo(1);
+        assertThat(match.isFinished()).isFalse();
+        assertError(() -> match.offerDraw(X), ErrorCode.DRAW_OFFER_NOT_ALLOWED); // no move since the last offer
+
+        match.move(X, 7, 7);
+        match.offerDraw(X);
+        match.move(O, 8, 8); // playing on closes the offer
+        assertThat(match.snapshotFor(X).drawOfferFrom()).isNull();
+        assertThat(count(X, ServerMessageType.DRAW_OFFER_CLOSED)).isEqualTo(2);
+
+        match.offerDraw(O);
+        match.answerDraw(X, true);
+        assertThat(match.result().result()).isEqualTo(MatchResultType.DRAW);
+        assertThat(match.result().reason()).isEqualTo(EndReason.AGREED);
+        assertThat(match.result().ratingChangeX()).isZero(); // equal ratings: a draw changes nothing
+        assertThat(count(spectator, ServerMessageType.MATCH_END)).isEqualTo(1);
+    }
 }

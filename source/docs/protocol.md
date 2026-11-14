@@ -82,6 +82,8 @@ trước khi đăng nhập sẽ nhận lỗi `UNAUTHORIZED`.
 | `PLAY_BOT` | `{"level"?, "blockTwoEnds"?}` | `{"room": RoomInfo}` | Chơi với máy (rules.md mục 12). `level`: `EASY` \| `HARD` (mặc định `HARD`). Người gửi cầm `X`, trận bắt đầu ngay |
 | `MOVE` | `{"matchId","x","y"}` | `{"moveNo"}` | Kết quả của nước đi được gửi qua sự kiện `MOVE_APPLIED` |
 | `RESIGN` | `{"matchId"}` | `{}` | |
+| `OFFER_DRAW` | `{"matchId"}` | `{}` | Cầu hòa (rules.md mục 14). Đối thủ và người xem nhận `DRAW_OFFERED` |
+| `ANSWER_DRAW` | `{"matchId","accept": true\|false}` | `{}` | Trả lời lời cầu hòa của đối thủ. Đồng ý thì trận kết thúc hòa (`MATCH_END`, lý do `AGREED`) |
 | `LIST_ONLINE` | (không có) | `{"users": [OnlineUser]}` | Sau đó server tự đẩy `ONLINE_USERS` mỗi khi có thay đổi |
 | `QUICK_MATCH` | (không có) | `QueueStatus` | Vào hàng chờ ghép ngẫu nhiên (rules.md mục 8.2). Nếu ghép được ngay thì `inQueue = false` và `MATCH_START` tới luôn |
 | `CANCEL_QUICK_MATCH` | (không có) | `{}` | Rời hàng chờ |
@@ -114,6 +116,8 @@ server tự gửi thêm `ROOM_UPDATE` và `MATCH_STATE`.
 | `OPPONENT_RECONNECTED` | Người còn lại và người xem | `{"matchId","userId","turnDeadline"}` |
 | `CHAT_MESSAGE` | Người chơi và người xem trong phòng, kể cả người gửi | `{"roomId","from": PlayerInfo,"spectator": bool,"text","sentAt"}` |
 | `SPECTATE_ENDED` | Người xem của một phòng vừa bị xóa | `{"roomId"}` |
+| `DRAW_OFFERED` | Đối thủ của người cầu hòa và người xem | `{"matchId","fromId"}` |
+| `DRAW_OFFER_CLOSED` | Mọi người trong trận trừ người vừa từ chối | `{"matchId","reason"}`, `reason`: `DECLINED` (bị từ chối) \| `MOVED` (có người vừa đi một nước) |
 | `ONLINE_USERS` | Mọi người đã đăng nhập, mỗi khi danh sách hoặc trạng thái người online thay đổi | `{"users": [OnlineUser]}` |
 | `QUEUE_STATUS` | Người trong hàng chờ: khi khoảng điểm được nới rộng, và khi rời hàng chờ vì đã vào phòng/được ghép | `QueueStatus` |
 | `INVITED` | Người được mời | `{"inviteId","from": PlayerInfo,"expiresAt"}` |
@@ -177,6 +181,7 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
   "lastMove": {"x": 4, "y": 1, "mark": "X"},             // null nếu chưa có nước nào
   "turnDeadline": 1761200000000, // null khi PAUSED hoặc FINISHED
   "turnTimeLeftMs": 30000,       // thời gian còn lại của lượt hiện tại
+  "drawOfferFrom": null,         // id người đang cầu hòa (chờ trả lời), null nếu không có
   "result": null                 // MatchResult khi status = FINISHED
 }
 
@@ -184,7 +189,7 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
 {
   "matchId": "6f1c...",
   "result": "X_WIN",             // X_WIN | O_WIN | DRAW | ABORTED
-  "reason": "FIVE_IN_ROW",       // FIVE_IN_ROW | BOARD_FULL | RESIGN | TIMEOUT | DISCONNECT | BOTH_DISCONNECTED
+  "reason": "FIVE_IN_ROW",       // FIVE_IN_ROW | BOARD_FULL | RESIGN | TIMEOUT | DISCONNECT | BOTH_DISCONNECTED | AGREED
   "winnerId": 1,                 // null nếu hòa hoặc bị hủy
   "winLine": [[3,1],[4,1],[5,1],[6,1],[7,1]],  // chỉ có khi reason = FIVE_IN_ROW
   "ratingChange": {"X": 16, "O": -16}
@@ -257,7 +262,7 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
 | `NOT_FOUND` | (REST) Đường dẫn không tồn tại |
 | `UNAUTHORIZED` | Chưa đăng nhập, hoặc token sai/hết hạn |
 | `ALREADY_AUTHENTICATED` | Gửi `LOGIN`/`AUTH` khi phiên đã đăng nhập |
-| `VALIDATION_ERROR` | Dữ liệu không hợp lệ (username, password, tên phòng...) |
+| `VALIDATION_ERROR` | Dữ liệu không hợp lệ (username, mật khẩu quá ngắn hoặc quá 72 byte, tên phòng...) |
 | `USERNAME_TAKEN` | Username đã tồn tại |
 | `INVALID_CREDENTIALS` | Sai username hoặc mật khẩu |
 | `ACCOUNT_LOCKED` | Tài khoản bị khóa |
@@ -278,7 +283,9 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
 | `INVITE_PENDING` | Gửi lời mời mới khi lời mời trước chưa được trả lời |
 | `INVITE_NOT_FOUND` | Lời mời không tồn tại, đã hết hạn, đã đóng, hoặc người mời không còn sẵn sàng |
 | `REMATCH_NOT_AVAILABLE` | Gửi `REMATCH` khi phòng không ở trạng thái `FINISHED` |
-| `RATE_LIMITED` | Gửi thông điệp quá nhanh (rules.md mục 13) |
+| `RATE_LIMITED` | Gửi thông điệp quá nhanh, hoặc đăng nhập/đăng ký quá nhiều lần từ một IP (rules.md mục 13). REST trả HTTP `429` |
+| `DRAW_OFFER_NOT_ALLOWED` | Cầu hòa khi đang có một lời cầu hòa chờ trả lời, hoặc cầu hòa lại khi chưa có nước đi nào kể từ lần trước |
+| `NO_DRAW_OFFER` | Trả lời cầu hòa khi không có lời cầu hòa nào của đối thủ |
 | `FORBIDDEN` | Không đủ quyền (REST admin) |
 | `INTERNAL_ERROR` | Lỗi không lường trước ở server |
 

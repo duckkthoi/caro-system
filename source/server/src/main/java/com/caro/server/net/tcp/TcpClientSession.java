@@ -7,6 +7,7 @@ import java.io.Writer;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
+import com.caro.server.auth.ClientIp;
 import com.caro.server.net.ClientSession;
 
 /** A desktop client connected over a raw TCP socket. One JSON message per line. */
@@ -16,7 +17,9 @@ class TcpClientSession extends ClientSession {
     private final Writer out;
 
     TcpClientSession(Socket socket, int maxOutboundQueue) throws IOException {
-        super("tcp", String.valueOf(socket.getRemoteSocketAddress()), maxOutboundQueue);
+        // raw TCP never goes through the web proxy, so there is no forwarded address to look at
+        super("tcp", String.valueOf(socket.getRemoteSocketAddress()), ClientIp.resolve(socket.getInetAddress(), null),
+                maxOutboundQueue);
         this.socket = socket;
         this.out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
     }

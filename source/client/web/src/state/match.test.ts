@@ -6,6 +6,8 @@ import type { MatchState } from '../api/protocol';
 import {
   applyMove,
   canPlay,
+  drawOfferClosed,
+  drawOffered,
   finish,
   fromState,
   isMyTurn,
@@ -35,6 +37,7 @@ function start(yourMark: 'X' | 'O' | null): MatchState {
     lastMove: null,
     turnDeadline: 30_000,
     turnTimeLeftMs: 30_000,
+    drawOfferFrom: null,
     result: null,
   };
 }
@@ -102,4 +105,17 @@ test('a spectator never has the turn and gets no rating change', () => {
   });
   assert.equal(myRatingChange(ended, ended.result!), 0);
   assert.equal(myRatingChange(fromState(start('O')), ended.result!), -16);
+});
+
+test('a draw offer is cleared by a move, by a refusal and by the end of the match', () => {
+  const offered = drawOffered(fromState(start('X')), 2);
+  assert.equal(offered.drawOfferFrom, 2);
+  const moved = applyMove(offered, { matchId: 'm1', moveNo: 1, x: 7, y: 7, mark: 'X', nextTurn: 'O', turnDeadline: 60_000 });
+  assert.equal(moved.drawOfferFrom, null);
+  assert.equal(drawOfferClosed(offered).drawOfferFrom, null);
+  const ended = finish(offered, {
+    matchId: 'm1', result: 'DRAW', reason: 'AGREED', winnerId: null, ratingChange: { X: 0, O: 0 },
+  });
+  assert.equal(ended.drawOfferFrom, null);
+  assert.equal(ended.status, 'FINISHED');
 });

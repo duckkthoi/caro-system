@@ -29,6 +29,11 @@ public final class RateLimiter {
         this.lastRefill = nanoTime.getAsLong();
     }
 
+    /** True when nothing was asked for this long: the bucket is full again and can be forgotten. */
+    public synchronized boolean isIdleFor(long nanos) {
+        return nanoTime.getAsLong() - lastRefill >= nanos;
+    }
+
     /** @return true if the action may go ahead (a token was taken), false if it must be rejected */
     public synchronized boolean tryAcquire() {
         long now = nanoTime.getAsLong();

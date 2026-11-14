@@ -8,7 +8,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.client.RestClient;
 
 import com.caro.server.net.tcp.TcpServer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,12 +22,17 @@ import com.fasterxml.jackson.databind.JsonNode;
         "caro.rate-limit.burst=6",
         "caro.rate-limit.per-second=0.001",
         "caro.rate-limit.chat-burst=2",
-        "caro.rate-limit.chat-per-second=0.001"})
+        "caro.rate-limit.chat-per-second=0.001",
+        "caro.rate-limit.auth-burst=4",
+        "caro.rate-limit.auth-per-second=0.001"})
 @ActiveProfiles("test")
 class RateLimitIntegrationTest {
 
     @Autowired
     TcpServer tcpServer;
+
+    @LocalServerPort
+    int httpPort;
 
     @Test
     void tooManyMessagesAreRejectedButPingAlwaysWorks() throws Exception {
@@ -60,5 +69,25 @@ class RateLimitIntegrationTest {
     private static void assertError(JsonNode reply, String code) {
         assertThat(reply.path("type").asText()).as("%s", reply).isEqualTo("ERROR");
         assertThat(reply.path("data").path("code").asText()).isEqualTo(code);
+    }
+
+    @Test
+    void loginAttemptsAreLimitedPerAddress() {
+        RestClient rest = RestClient.create("http://localhost:" + httpPort);
+        // the test runs on 127.0.0.1, which the server treats as a proxy: X-Real-IP picks the "client"
+        for (int i = 0; i < 4; i++) {
+            assertThat(attempt(rest, "203.0.113.50").getStatusCode().value()).isEqualTo(401);
+        }
+        ResponseEntity<JsonNode> blocked = attempt(rest, "203.0.113.50");
+        assertThat(blocked.getStatusCode().value()).isEqualTo(429);
+        assertThat(blocked.getBody().path("code").asText()).isEqualTo("RATE_LIMITED");
+        // another address has its own bucket
+        assertThat(attempt(rest, "203.0.113.51").getStatusCode().value()).isEqualTo(401);
+    }
+
+    private static ResponseEntity<JsonNode> attempt(RestClient rest, String ip) {
+        return rest.post().uri("/api/auth/login").header("X-Real-IP", ip).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", "nobody_here", "password", "wrong-password"))
+                .retrieve().onStatus(s -> true, (req, res) -> { }).toEntity(JsonNode.class);
     }
 }

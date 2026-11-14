@@ -20,6 +20,7 @@ export interface MatchView {
   graceDeadline: number | null; // while the opponent is disconnected
   moveCount: number;
   lastMove: [number, number] | null;
+  drawOfferFrom: number | null; // pending draw offer (docs/rules.md, section 14)
   result: MatchResult | null;
 }
 
@@ -41,6 +42,7 @@ export function fromState(s: MatchState): MatchView {
     graceDeadline: null,
     moveCount: s.moveCount,
     lastMove: s.lastMove ? [s.lastMove.x, s.lastMove.y] : null,
+    drawOfferFrom: s.drawOfferFrom ?? null,
     result: s.result,
   };
 }
@@ -56,11 +58,12 @@ export function applyMove(m: MatchView, move: MoveApplied): MatchView {
     moveCount: move.moveNo,
     turn: move.nextTurn,
     turnDeadline: move.turnDeadline,
+    drawOfferFrom: null, // a move closes any draw offer
   };
 }
 
 export function finish(m: MatchView, result: MatchResult): MatchView {
-  return { ...m, status: 'FINISHED', result, turn: null, turnDeadline: null, graceDeadline: null };
+  return { ...m, status: 'FINISHED', result, turn: null, turnDeadline: null, graceDeadline: null, drawOfferFrom: null };
 }
 
 export function opponentDisconnected(m: MatchView, graceDeadline: number, serverNow: number): MatchView {
@@ -70,6 +73,14 @@ export function opponentDisconnected(m: MatchView, graceDeadline: number, server
 
 export function opponentReconnected(m: MatchView, turnDeadline: number): MatchView {
   return { ...m, status: 'IN_PROGRESS', turnDeadline, graceDeadline: null };
+}
+
+export function drawOffered(m: MatchView, fromId: number): MatchView {
+  return { ...m, drawOfferFrom: fromId };
+}
+
+export function drawOfferClosed(m: MatchView): MatchView {
+  return { ...m, drawOfferFrom: null };
 }
 
 export function isMyTurn(m: MatchView): boolean {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AdminPage } from './admin/AdminPage';
+import { ConfirmProvider } from './components/Confirm';
 import { Lobby } from './components/Lobby';
 import { Login } from './components/Login';
 import { ModalProvider, useModals } from './components/Modals';
@@ -22,10 +23,12 @@ export function App() {
     store.restore();
   }, []);
   return (
-    <ModalProvider>
-      <Screens />
-      <Popups />
-    </ModalProvider>
+    <ConfirmProvider>
+      <ModalProvider>
+        <Screens />
+        <Popups />
+      </ModalProvider>
+    </ConfirmProvider>
   );
 }
 

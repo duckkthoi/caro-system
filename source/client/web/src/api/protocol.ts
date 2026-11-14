@@ -48,7 +48,8 @@ export interface MatchResult {
   ratingChange: Record<Mark, number>;
 }
 
-export type EndReason = 'FIVE_IN_ROW' | 'BOARD_FULL' | 'RESIGN' | 'TIMEOUT' | 'DISCONNECT' | 'BOTH_DISCONNECTED';
+export type EndReason =
+  | 'FIVE_IN_ROW' | 'BOARD_FULL' | 'RESIGN' | 'TIMEOUT' | 'DISCONNECT' | 'BOTH_DISCONNECTED' | 'AGREED';
 
 export interface MatchState {
   matchId: string;
@@ -66,6 +67,7 @@ export interface MatchState {
   lastMove: { x: number; y: number; mark: Mark } | null;
   turnDeadline: number | null;
   turnTimeLeftMs: number;
+  drawOfferFrom: number | null; // player waiting for an answer to their draw offer
   result: MatchResult | null;
 }
 

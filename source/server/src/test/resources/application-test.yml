@@ -14,5 +14,7 @@ caro:
   rate-limit:
     burst: 1000       # tests fire requests faster than any person; RateLimitIntegrationTest checks the real limit
     per-second: 1000
+    auth-burst: 100000  # every test logs in from 127.0.0.1
+    auth-per-second: 1000
   bot:
     move-delay: 20ms

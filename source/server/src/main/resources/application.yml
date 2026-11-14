@@ -41,6 +41,8 @@ caro:
     per-second: 10               # ... then this many per second
     chat-burst: 5
     chat-per-second: 0.5         # one chat message every 2 s
+    auth-burst: 20               # login/register attempts per IP address in a row
+    auth-per-second: 0.34        # ... then about one every 3 s
   bot:
     move-delay: 500ms
   heartbeat:

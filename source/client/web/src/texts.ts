@@ -41,6 +41,7 @@ export const reason: Record<EndReason, string> = {
   TIMEOUT: 'Hết giờ',
   DISCONNECT: 'Mất kết nối',
   BOTH_DISCONNECTED: 'Cả hai mất kết nối',
+  AGREED: 'Hai bên đồng ý hòa',
 };
 
 export const result: Record<string, string> = {

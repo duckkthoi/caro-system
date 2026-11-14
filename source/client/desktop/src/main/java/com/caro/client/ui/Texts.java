@@ -76,6 +76,7 @@ final class Texts {
             case "TIMEOUT" -> "Hết giờ";
             case "DISCONNECT" -> "Mất kết nối";
             case "BOTH_DISCONNECTED" -> "Cả hai mất kết nối";
+            case "AGREED" -> "Hai bên đồng ý hòa";
             default -> reason;
         };
     }

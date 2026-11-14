@@ -219,4 +219,20 @@ class RestApiIntegrationTest {
     private static String uniqueName(String prefix) {
         return prefix + "_" + UUID.randomUUID().toString().substring(0, 8);
     }
+
+    @Test
+    void passwordsAreLimitedInBytesAndDisplayNamesLoseControlCharacters() {
+        ResponseEntity<JsonNode> tooLong = rest.post().uri("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", uniqueName("pw"), "password", "ệ".repeat(30))) // 30 characters, 90 bytes
+                .retrieve().onStatus(s -> true, (req, res) -> { }).toEntity(JsonNode.class);
+        assertError(tooLong, 400, "VALIDATION_ERROR");
+
+        String username = uniqueName("pv");
+        String password = "mậtkhẩu" + "ệ".repeat(15); // 22 characters, 54 bytes: fine
+        JsonNode user = rest.post().uri("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("username", username, "password", password, "displayName", "  An\nBình\t "))
+                .retrieve().body(JsonNode.class);
+        assertThat(user.path("displayName").asText()).isEqualTo("An Bình");
+        assertThat(login(username, password)).isNotBlank();
+    }
 }

@@ -6,5 +6,7 @@ public enum EndReason {
     RESIGN,
     TIMEOUT,
     DISCONNECT,
-    BOTH_DISCONNECTED
+    BOTH_DISCONNECTED,
+    /** Both players agreed to a draw (docs/rules.md, section 14). */
+    AGREED
 }

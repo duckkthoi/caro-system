@@ -1,6 +1,7 @@
 package com.caro.server.auth;
 
 import java.util.Locale;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,7 +21,7 @@ public class AuthService {
 
     private static final Pattern USERNAME = Pattern.compile("^[a-z0-9_]{3,20}$");
     private static final int PASSWORD_MIN = 6;
-    private static final int PASSWORD_MAX = 72; // BCrypt only uses the first 72 bytes
+    private static final int PASSWORD_MAX_BYTES = 72; // BCrypt refuses longer passwords
     private static final int DISPLAY_NAME_MAX = 30;
 
     private final UserRepository users;
@@ -39,10 +40,13 @@ public class AuthService {
         if (!USERNAME.matcher(username).matches()) {
             throw new AppException(ErrorCode.VALIDATION_ERROR, "Username gồm 3-20 ký tự a-z, 0-9 hoặc _");
         }
-        if (password == null || password.length() < PASSWORD_MIN || password.length() > PASSWORD_MAX) {
-            throw new AppException(ErrorCode.VALIDATION_ERROR, "Mật khẩu phải dài từ 6 đến 72 ký tự");
+        if (password == null || password.length() < PASSWORD_MIN || utf8Length(password) > PASSWORD_MAX_BYTES) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR,
+                    "Mật khẩu phải có ít nhất 6 ký tự và tối đa 72 byte (chữ có dấu tính 2-3 byte)");
         }
-        String displayName = rawDisplayName == null || rawDisplayName.isBlank() ? username : rawDisplayName.trim();
+        // control characters (new lines, tabs...) would break the clients' layout
+        String cleaned = rawDisplayName == null ? "" : rawDisplayName.replaceAll("\\p{Cntrl}", " ").strip();
+        String displayName = cleaned.isEmpty() ? username : cleaned;
         if (displayName.length() > DISPLAY_NAME_MAX) {
             throw new AppException(ErrorCode.VALIDATION_ERROR, "Tên hiển thị tối đa 30 ký tự");
         }
@@ -60,7 +64,8 @@ public class AuthService {
     @Transactional(readOnly = true)
     public User login(String rawUsername, String password) {
         User user = users.findByUsername(normalizeUsername(rawUsername))
-                .filter(u -> password != null && passwordEncoder.matches(password, u.getPasswordHash()))
+                .filter(u -> password != null && utf8Length(password) <= PASSWORD_MAX_BYTES
+                        && passwordEncoder.matches(password, u.getPasswordHash()))
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_CREDENTIALS, "Sai username hoặc mật khẩu"));
         return requireActive(user);
     }
@@ -75,6 +80,10 @@ public class AuthService {
         User user = users.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Tài khoản không tồn tại"));
         return requireActive(user);
+    }
+
+    private static int utf8Length(String s) {
+        return s.getBytes(StandardCharsets.UTF_8).length;
     }
 
     public String issueToken(User user) {

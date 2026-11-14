@@ -41,10 +41,11 @@ public record CaroProperties(Tcp tcp, Game game, Matchmaking matchmaking, Invite
     }
 
     /**
-     * Per connection token buckets (docs/rules.md, section 13): every message but PING takes a token from the
-     * general bucket, CHAT also from the chat bucket.
+     * Token buckets (docs/rules.md, section 13). Per connection: every message but PING takes a token from the
+     * general bucket, CHAT also from the chat bucket. Per IP address: login and registration attempts.
      */
-    public record RateLimit(int burst, double perSecond, int chatBurst, double chatPerSecond) {
+    public record RateLimit(int burst, double perSecond, int chatBurst, double chatPerSecond, int authBurst,
+                            double authPerSecond) {
     }
 
     /** The computer opponent waits {@code moveDelay} before each move, so it feels like a player. */

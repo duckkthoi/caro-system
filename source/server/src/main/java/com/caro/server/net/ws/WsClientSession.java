@@ -5,6 +5,7 @@ import java.io.IOException;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
+import com.caro.server.auth.ClientIp;
 import com.caro.server.net.ClientSession;
 
 /** A browser connected over WebSocket. One JSON message per text frame. */
@@ -13,7 +14,10 @@ class WsClientSession extends ClientSession {
     private final WebSocketSession ws;
 
     WsClientSession(WebSocketSession ws, int maxOutboundQueue) {
-        super("ws", String.valueOf(ws.getRemoteAddress()), maxOutboundQueue);
+        super("ws", String.valueOf(ws.getRemoteAddress()),
+                ClientIp.resolve(ws.getRemoteAddress() == null ? null : ws.getRemoteAddress().getAddress(),
+                        ws.getHandshakeHeaders().getFirst(ClientIp.HEADER)),
+                maxOutboundQueue);
         this.ws = ws;
     }
 

@@ -205,6 +205,40 @@ class RoomExtrasIntegrationTest {
         }
     }
 
+    @Test
+    void drawByAgreementIsStoredAndTheBotDeclines() throws Exception {
+        try (TestClient a = tcpLoggedIn(uniqueName("da")); TestClient b = tcpLoggedIn(uniqueName("db"))) {
+            String roomId = a.ok("CREATE_ROOM", Map.of()).path("room").path("id").asText();
+            b.ok("JOIN_ROOM", Map.of("roomId", roomId));
+            String matchId = a.awaitType("MATCH_START").path("data").path("matchId").asText();
+
+            a.ok("OFFER_DRAW", Map.of("matchId", matchId));
+            assertThat(b.awaitType("DRAW_OFFERED").path("data").path("fromId").asLong()).isEqualTo(id(a));
+            assertError(a.request("OFFER_DRAW", Map.of("matchId", matchId)), "DRAW_OFFER_NOT_ALLOWED");
+            b.ok("ANSWER_DRAW", Map.of("matchId", matchId, "accept", false));
+            assertThat(a.awaitType("DRAW_OFFER_CLOSED").path("data").path("reason").asText()).isEqualTo("DECLINED");
+
+            a.ok("MOVE", Map.of("matchId", matchId, "x", 7, "y", 7));
+            b.ok("OFFER_DRAW", Map.of("matchId", matchId));
+            a.awaitType("DRAW_OFFERED");
+            a.ok("ANSWER_DRAW", Map.of("matchId", matchId, "accept", true));
+            JsonNode end = b.awaitType("MATCH_END").path("data");
+            assertThat(end.path("result").asText()).isEqualTo("DRAW");
+            assertThat(end.path("reason").asText()).isEqualTo("AGREED");
+            awaitStored(a, matchId); // the V3 migration allows the new reason
+            assertThat(a.ok("GET_MATCH", Map.of("matchId", matchId)).path("match").path("reason").asText())
+                    .isEqualTo("AGREED");
+
+            a.ok("LEAVE_ROOM", Map.of());
+            a.ok("PLAY_BOT", Map.of());
+            String botMatch = a.awaitType("MATCH_START", d -> !d.path("matchId").asText().equals(matchId))
+                    .path("data").path("matchId").asText();
+            a.ok("OFFER_DRAW", Map.of("matchId", botMatch));
+            assertThat(a.awaitType("DRAW_OFFER_CLOSED", d -> d.path("matchId").asText().equals(botMatch))
+                    .path("data").path("reason").asText()).isEqualTo("DECLINED");
+        }
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private TestClient tcpLoggedIn(String username) throws Exception {

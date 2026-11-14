@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import com.caro.server.auth.AuthService;
 import com.caro.server.auth.AuthenticatedUser;
+import com.caro.server.auth.LoginThrottle;
 import com.caro.server.bot.BotLevel;
 import com.caro.server.common.AppException;
 import com.caro.server.common.ErrorBody;
@@ -63,6 +64,9 @@ public class MessageDispatcher {
     record ResignRequest(String matchId) {
     }
 
+    record AnswerDrawRequest(String matchId, Boolean accept) {
+    }
+
     record ProfileRequest(Long userId) {
     }
 
@@ -92,15 +96,17 @@ public class MessageDispatcher {
     private final LobbyService lobby;
     private final PlayerQueryService queries;
     private final CaroProperties.RateLimit limits;
+    private final LoginThrottle loginThrottle;
 
     public MessageDispatcher(ObjectMapper mapper, SessionRegistry registry, AuthService auth, LobbyService lobby,
-                             PlayerQueryService queries, CaroProperties props) {
+                             PlayerQueryService queries, CaroProperties props, LoginThrottle loginThrottle) {
         this.mapper = mapper;
         this.registry = registry;
         this.auth = auth;
         this.lobby = lobby;
         this.queries = queries;
         this.limits = props.rateLimit();
+        this.loginThrottle = loginThrottle;
     }
 
     public void onOpen(ClientSession session) {
@@ -168,12 +174,14 @@ public class MessageDispatcher {
             case PING -> registry.send(session, ServerMessageType.PONG, reqId,
                     Map.of("serverTime", System.currentTimeMillis()));
             case REGISTER -> {
+                loginThrottle.check(session.clientIp());
                 RegisterRequest req = read(data, RegisterRequest.class);
                 User user = auth.register(req.username(), req.password(), req.displayName());
                 ok(session, reqId, Map.of("user", UserInfo.from(user)));
             }
             case LOGIN -> {
                 requireAnonymous(session);
+                loginThrottle.check(session.clientIp());
                 LoginRequest req = read(data, LoginRequest.class);
                 User user = auth.login(req.username(), req.password());
                 completeLogin(session, reqId, user, auth.issueToken(user));
@@ -235,6 +243,19 @@ public class MessageDispatcher {
                 ResignRequest req = read(data, ResignRequest.class);
                 requireField(req.matchId(), "matchId");
                 lobby.resign(userId(session), req.matchId());
+                ok(session, reqId, Map.of());
+            }
+            case OFFER_DRAW -> {
+                ResignRequest req = read(data, ResignRequest.class); // same shape: {"matchId"}
+                requireField(req.matchId(), "matchId");
+                lobby.offerDraw(userId(session), req.matchId());
+                ok(session, reqId, Map.of());
+            }
+            case ANSWER_DRAW -> {
+                AnswerDrawRequest req = read(data, AnswerDrawRequest.class);
+                requireField(req.matchId(), "matchId");
+                requireField(req.accept(), "accept");
+                lobby.answerDraw(userId(session), req.matchId(), req.accept());
                 ok(session, reqId, Map.of());
             }
             // read-only queries: same JSON as the matching REST endpoints

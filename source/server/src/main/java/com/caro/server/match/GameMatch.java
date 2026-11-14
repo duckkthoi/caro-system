@@ -3,6 +3,7 @@ package com.caro.server.match;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -56,6 +57,8 @@ public class GameMatch {
     private final List<PlayedMove> moves = new ArrayList<>();
     private final Set<Long> disconnected = new HashSet<>();
     private final Set<Long> spectators = new LinkedHashSet<>();
+    private final Map<Long, Integer> lastDrawOfferAt = new HashMap<>(); // player -> moves played when they offered
+    private Long drawOfferFrom; // pending draw offer, null if none
     private MatchStatus status = MatchStatus.IN_PROGRESS;
     private Mark turn = Mark.X;
     private long turnDeadline;
@@ -130,6 +133,10 @@ public class GameMatch {
             }
             broadcast(ServerMessageType.MOVE_APPLIED, new MoveApplied(id, moveNo, x, y, mark,
                     over ? null : turn, over ? null : turnDeadline));
+            if (drawOfferFrom != null && !over) {
+                drawOfferFrom = null; // playing on means the offer was not taken
+                broadcast(ServerMessageType.DRAW_OFFER_CLOSED, event("reason", "MOVED"));
+            }
             if (over) {
                 ended = draw
                         ? finish(MatchResultType.DRAW, EndReason.BOARD_FULL, List.of())
@@ -149,6 +156,50 @@ public class GameMatch {
                 throw new AppException(ErrorCode.MATCH_NOT_IN_PROGRESS, "Trận đấu đã kết thúc");
             }
             ended = finish(MatchResultType.winOf(mark.opposite()), EndReason.RESIGN, List.of());
+        }
+        fireEndedIf(ended);
+    }
+
+    // ------------------------------------------------------------------ draw offers (docs/rules.md, section 14)
+
+    /** A player offers a draw. Only one offer at a time, and not twice without a move in between. */
+    public void offerDraw(long userId) {
+        synchronized (this) {
+            requireMark(userId);
+            if (status != MatchStatus.IN_PROGRESS) {
+                throw new AppException(ErrorCode.MATCH_NOT_IN_PROGRESS, "Trận đấu không ở trạng thái cho phép cầu hòa");
+            }
+            if (drawOfferFrom != null) {
+                throw new AppException(ErrorCode.DRAW_OFFER_NOT_ALLOWED, "Đang có một lời cầu hòa chờ trả lời");
+            }
+            Integer last = lastDrawOfferAt.get(userId);
+            if (last != null && last == moves.size()) {
+                throw new AppException(ErrorCode.DRAW_OFFER_NOT_ALLOWED,
+                        "Bạn vừa cầu hòa, hãy chờ thêm ít nhất một nước đi");
+            }
+            drawOfferFrom = userId;
+            lastDrawOfferAt.put(userId, moves.size());
+            broadcastExcept(userId, ServerMessageType.DRAW_OFFERED, event("fromId", userId));
+        }
+    }
+
+    /** The opponent of the player who offered accepts (the match ends in a draw) or declines. */
+    public void answerDraw(long userId, boolean accept) {
+        boolean ended = false;
+        synchronized (this) {
+            requireMark(userId);
+            if (drawOfferFrom == null || drawOfferFrom == userId) {
+                throw new AppException(ErrorCode.NO_DRAW_OFFER, "Không có lời cầu hòa nào để trả lời");
+            }
+            if (status != MatchStatus.IN_PROGRESS) {
+                throw new AppException(ErrorCode.MATCH_NOT_IN_PROGRESS, "Trận đấu không ở trạng thái cho phép trả lời");
+            }
+            drawOfferFrom = null;
+            if (accept) {
+                ended = finish(MatchResultType.DRAW, EndReason.AGREED, List.of());
+            } else {
+                broadcastExcept(userId, ServerMessageType.DRAW_OFFER_CLOSED, event("reason", "DECLINED"));
+            }
         }
         fireEndedIf(ended);
     }
@@ -315,6 +366,7 @@ public class GameMatch {
         }
         status = MatchStatus.FINISHED;
         endedAt = rt.clock().instant();
+        drawOfferFrom = null;
         cancel(turnTimer);
         cancel(graceTimer);
 
@@ -354,6 +406,7 @@ public class GameMatch {
                 last == null ? null : new MatchState.LastMove(last.x(), last.y(), last.mark()),
                 status == MatchStatus.IN_PROGRESS ? turnDeadline : null,
                 timeLeft,
+                drawOfferFrom,
                 result);
     }
 
@@ -387,6 +440,13 @@ public class GameMatch {
                 rt.notifier().sendToUser(userId, type, data);
             }
         }
+    }
+
+    private Map<String, Object> event(String k1, Object v1) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("matchId", id);
+        data.put(k1, v1);
+        return data;
     }
 
     private Map<String, Object> event(String k1, Object v1, String k2, Object v2) {

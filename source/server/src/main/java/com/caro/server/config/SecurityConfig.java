@@ -19,6 +19,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.caro.server.auth.AuthService;
 import com.caro.server.auth.JwtAuthFilter;
+import com.caro.server.auth.LoginThrottle;
+import com.caro.server.auth.LoginThrottleFilter;
 import com.caro.server.common.ErrorBody;
 import com.caro.server.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,8 +35,8 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthService authService, ObjectMapper mapper)
-            throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthService authService, ObjectMapper mapper,
+                                                   LoginThrottle loginThrottle) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -51,6 +53,8 @@ public class SecurityConfig {
                                 writeError(res, mapper, ErrorCode.UNAUTHORIZED, "Chưa đăng nhập"))
                         .accessDeniedHandler((req, res, ex) ->
                                 writeError(res, mapper, ErrorCode.FORBIDDEN, "Không đủ quyền")))
+                .addFilterBefore(new LoginThrottleFilter(loginThrottle, mapper),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new JwtAuthFilter(authService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

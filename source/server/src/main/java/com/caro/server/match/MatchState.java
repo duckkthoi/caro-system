@@ -23,6 +23,7 @@ public record MatchState(
         LastMove lastMove,
         Long turnDeadline,
         long turnTimeLeftMs,
+        Long drawOfferFrom,
         MatchResult result) {
 
     public record LastMove(int x, int y, Mark mark) {

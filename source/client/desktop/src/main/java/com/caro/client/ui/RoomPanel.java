@@ -55,6 +55,9 @@ final class RoomPanel extends JPanel implements ClientListener {
     private final JButton rematchButton = new JButton("Chơi lại");
     private final JButton inviteButton = new JButton("Mời người chơi");
     private final JButton leaveButton = new JButton("Rời phòng");
+    private final JButton drawButton = new JButton("Cầu hòa");
+    private final JButton acceptDrawButton = new JButton("Đồng ý hòa");
+    private final JButton declineDrawButton = new JButton("Từ chối hòa");
     private final JPanel buttons = new JPanel(new GridLayout(0, 1, 0, 6));
     private final Timer ticker = new Timer(250, e -> refreshClock());
     private boolean movePending;
@@ -90,11 +93,11 @@ final class RoomPanel extends JPanel implements ClientListener {
         info.add(clock, BorderLayout.NORTH);
         info.add(status, BorderLayout.CENTER);
         info.setAlignmentX(Component.LEFT_ALIGNMENT);
-        info.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
+        info.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
         side.add(info);
 
         buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
-        buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 170));
+        buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
         side.add(buttons);
         side.add(Box.createVerticalStrut(8));
         spectators.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -111,6 +114,9 @@ final class RoomPanel extends JPanel implements ClientListener {
             }
         });
         rematchButton.addActionListener(e -> Ui.run(this, rematchButton, client.rematch(), null));
+        drawButton.addActionListener(e -> Ui.run(this, drawButton, client.offerDraw(), null));
+        acceptDrawButton.addActionListener(e -> Ui.run(this, acceptDrawButton, client.answerDraw(true), null));
+        declineDrawButton.addActionListener(e -> Ui.run(this, declineDrawButton, client.answerDraw(false), null));
         inviteButton.addActionListener(e -> frame.pickAndInvite());
         leaveButton.addActionListener(e -> leave());
     }
@@ -196,7 +202,7 @@ final class RoomPanel extends JPanel implements ClientListener {
 
         long myId = client.me() == null ? -1 : client.me().id();
         resignButton.setEnabled(live);
-        showButtons(room, watching);
+        showButtons(room, watching, match);
         boolean asked = room.rematchRequestedBy(myId);
         rematchButton.setEnabled(room.isFinished() && !asked);
         rematchButton.setText(asked ? "Đã gửi yêu cầu chơi lại" : "Chơi lại (đổi quân)");
@@ -212,7 +218,7 @@ final class RoomPanel extends JPanel implements ClientListener {
     }
 
     /** Only the buttons that make sense now, without gaps for the hidden ones. */
-    private void showButtons(RoomInfo room, boolean watching) {
+    private void showButtons(RoomInfo room, boolean watching, MatchView match) {
         buttons.removeAll();
         leaveButton.setText(watching ? "Thôi xem" : "Rời phòng");
         if (watching) {
@@ -226,6 +232,7 @@ final class RoomPanel extends JPanel implements ClientListener {
         } else if (room.isFinished()) {
             buttons.add(rematchButton);
         } else {
+            addDrawButtons(match);
             buttons.add(resignButton);
         }
         buttons.add(leaveButton);
@@ -246,6 +253,23 @@ final class RoomPanel extends JPanel implements ClientListener {
         PlayerInfo other = room.players().size() > 1 ? room.players().get(1) : null;
         cardX.show(host, isMe(host), false);
         cardO.show(other, isMe(other), false);
+    }
+
+    /** Offer a draw, or answer the opponent's offer (docs/rules.md, section 14). */
+    private void addDrawButtons(MatchView match) {
+        if (match == null) {
+            return;
+        }
+        Long offer = match.drawOfferFrom();
+        long myId = client.me() == null ? -1 : client.me().id();
+        if (offer != null && offer != myId) {
+            buttons.add(acceptDrawButton);
+            buttons.add(declineDrawButton);
+            return;
+        }
+        drawButton.setText(offer != null ? "Đã cầu hòa, chờ đối thủ..." : "Cầu hòa");
+        drawButton.setEnabled(offer == null && match.isInProgress());
+        buttons.add(drawButton);
     }
 
     private static String tagsText(RoomInfo room, boolean watching) {
@@ -275,7 +299,13 @@ final class RoomPanel extends JPanel implements ClientListener {
             return "Một người chơi mất kết nối.\nChờ quay lại: " + Texts.clock(Math.max(0, left));
         }
         PlayerInfo onTurn = "X".equals(match.turn()) ? match.playerX() : match.playerO();
-        return "Đến lượt " + onTurn.displayName() + " (" + match.turn() + ")";
+        String text = "Đến lượt " + onTurn.displayName() + " (" + match.turn() + ")";
+        Long offer = match.drawOfferFrom();
+        if (offer != null) {
+            PlayerInfo from = offer == match.playerX().id() ? match.playerX() : match.playerO();
+            text += "\n" + from.displayName() + " đề nghị hòa.";
+        }
+        return text;
     }
 
     private String statusText(RoomInfo room, MatchView match, long myId) {
@@ -299,7 +329,12 @@ final class RoomPanel extends JPanel implements ClientListener {
             long left = match.graceDeadline() == null ? 0 : match.graceDeadline() - client.serverNow();
             return "Đối thủ mất kết nối.\nChờ đối thủ quay lại: " + Texts.clock(Math.max(0, left));
         }
-        return match.isMyTurn() ? "Đến lượt bạn" : "Đang chờ đối thủ đi...";
+        String text = match.isMyTurn() ? "Đến lượt bạn" : "Đang chờ đối thủ đi...";
+        Long offer = match.drawOfferFrom();
+        if (offer != null) {
+            text += offer == myId ? "\nĐã gửi lời cầu hòa." : "\nĐối thủ đề nghị hòa!";
+        }
+        return text;
     }
 
     private static String resultText(MatchResult r, String myMark, boolean rated, long myId) {

@@ -19,5 +19,7 @@ public enum ServerMessageType {
     INVITED,
     INVITE_CLOSED,
     CHAT_MESSAGE,
-    SPECTATE_ENDED
+    SPECTATE_ENDED,
+    DRAW_OFFERED,
+    DRAW_OFFER_CLOSED
 }

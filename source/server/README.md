@@ -145,6 +145,13 @@ REST /api ─► AuthController ─► AuthService                         Match
     tính để heartbeat không bao giờ làm người chơi bị coi là mất kết nối.
 15. **Luật chặn hai đầu lưu cùng trận** (cột `block_two_ends`, migration `V2`), vì đường thắng khi xem lại được
     tính lại từ các nước đi và phải dùng đúng luật của trận đó.
+16. **Chống dò mật khẩu theo IP, không theo kết nối.** `LoginThrottle` đếm số lần đăng nhập/đăng ký theo địa chỉ IP
+    cho cả REST (`LoginThrottleFilter`) lẫn socket, nên mở kết nối mới không vượt qua được. Sau nginx, IP thật nằm
+    trong `X-Real-IP`; `ClientIp` chỉ tin header này khi request đến từ địa chỉ nội bộ (chính proxy), vì người ngoài có
+    thể tự đặt header. Mật khẩu được giới hạn **72 byte** (không phải 72 ký tự) vì BCrypt từ chối chuỗi dài hơn.
+17. **Cầu hòa nằm trong `GameMatch`**, dưới cùng khóa với nước đi, nên "đồng ý hòa" và "nước đi thắng" gửi cùng lúc
+    vẫn chỉ cho ra một kết quả (`finish()` chạy đúng một lần). Lý do `AGREED` cần migration `V3` để nới ràng buộc
+    `CHECK` của cột `end_reason` (không sửa `V1`).
 
 ---
 
@@ -162,12 +169,13 @@ Không cần Docker, vì test dùng H2 in-memory.
 | `RateLimiterTest` | Token bucket: cho phép dồn tối đa, nạp lại đúng tốc độ, không tích quá mức tối đa |
 | `EloTest` | Công thức Elo |
 | `MatchmakingQueueTest` | Ghép ngay khi điểm gần nhau, chênh nhiều thì phải chờ cả hai nới khoảng, ghép bất kỳ sau 30 giây, ưu tiên người chờ lâu nhất và đối thủ gần điểm nhất |
-| `GameMatchTest` | Lượt đi, ô không hợp lệ, thắng/hòa/đầu hàng/hết giờ, kết thúc đúng một lần, timer cũ bị bỏ qua, mất kết nối/kết nối lại/hủy trận; người xem nhận sự kiện nhưng không đi được; trận không tính Elo; luật chặn hai đầu |
+| `GameMatchTest` | Lượt đi, ô không hợp lệ, thắng/hòa/đầu hàng/hết giờ, kết thúc đúng một lần, timer cũ bị bỏ qua, mất kết nối/kết nối lại/hủy trận; người xem nhận sự kiện nhưng không đi được; trận không tính Elo; luật chặn hai đầu; cầu hòa (từ chối, bị nước đi hủy, chống spam, đồng ý) |
+| `ClientIpTest` | Chỉ tin `X-Real-IP` khi request đến từ proxy nội bộ |
 | `GameFlowIntegrationTest` | Chạy thật qua socket: **client TCP đấu với client WebSocket**, lưu DB và Elo, kết nối lại giữa trận, đăng nhập lần hai đá phiên cũ, lỗi giao thức |
 | `LobbyFeaturesIntegrationTest` | Ghép trận nhanh (X/O ngẫu nhiên, trạng thái online đổi theo), hủy tìm trận, lời mời được đồng ý/từ chối/hủy/hết hạn/đóng khi người kia offline, đồng ý lời mời thì tự rời hàng chờ, chơi lại đổi quân |
-| `RoomExtrasIntegrationTest` | Qua TCP thật: người xem thấy trận và nhận nước đi, chat (cả người chơi và người xem, ký tự điều khiển bị thay, giới hạn độ dài), người xem bị đưa ra khi phòng đóng, người xem vào ngồi chơi được; phòng chặn hai đầu chơi tiếp sau 5 quân bị chặn và luật được lưu; chơi với máy (không tính Elo, không lưu, chơi lại đổi quân, máy đi trước), máy mức khó thắng người chơi đi lung tung |
-| `RateLimitIntegrationTest` | Gửi quá nhanh bị `RATE_LIMITED` (cả JSON hỏng cũng bị tính), `PING` không bị chặn, chat có giới hạn riêng |
-| `RestApiIntegrationTest` | Sau một trận: hồ sơ, lịch sử, xem lại trận, bảng xếp hạng (REST và socket ra cùng kết quả); mã lỗi REST 400/401/403/404; admin khóa người đang trong trận (bị `KICKED`, đối thủ nhận `OPPONENT_DISCONNECTED`, token cũ hết hiệu lực) rồi mở khóa |
+| `RoomExtrasIntegrationTest` | Qua TCP thật: cầu hòa bị từ chối rồi được đồng ý (lưu với lý do `AGREED`), máy luôn từ chối hòa; người xem thấy trận và nhận nước đi, chat (cả người chơi và người xem, ký tự điều khiển bị thay, giới hạn độ dài), người xem bị đưa ra khi phòng đóng, người xem vào ngồi chơi được; phòng chặn hai đầu chơi tiếp sau 5 quân bị chặn và luật được lưu; chơi với máy (không tính Elo, không lưu, chơi lại đổi quân, máy đi trước), máy mức khó thắng người chơi đi lung tung |
+| `RateLimitIntegrationTest` | Gửi quá nhanh bị `RATE_LIMITED` (cả JSON hỏng cũng bị tính), `PING` không bị chặn, chat có giới hạn riêng, đăng nhập REST bị chặn theo IP (HTTP 429) và mỗi IP một xô riêng |
+| `RestApiIntegrationTest` | Mật khẩu quá 72 byte bị `VALIDATION_ERROR` (không còn lỗi 500), tên hiển thị bị bỏ ký tự điều khiển. Sau một trận: hồ sơ, lịch sử, xem lại trận, bảng xếp hạng (REST và socket ra cùng kết quả); mã lỗi REST 400/401/403/404; admin khóa người đang trong trận (bị `KICKED`, đối thủ nhận `OPPONENT_DISCONNECTED`, token cũ hết hiệu lực) rồi mở khóa |
 
 ---
 

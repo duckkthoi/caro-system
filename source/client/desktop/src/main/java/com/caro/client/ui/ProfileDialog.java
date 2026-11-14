@@ -33,7 +33,7 @@ final class ProfileDialog extends JDialog {
         buttons.add(Ui.button("Đóng", this::dispose));
 
         JPanel content = Ui.padded(new JPanel(new BorderLayout(0, 14)), 18);
-        content.add(Ui.title(profile.player().displayName()), BorderLayout.NORTH);
+        content.add(Ui.title(Ui.html(profile.player().displayName())), BorderLayout.NORTH); // escaped: never HTML
         content.add(grid, BorderLayout.CENTER);
         content.add(buttons, BorderLayout.SOUTH);
         setContentPane(content);

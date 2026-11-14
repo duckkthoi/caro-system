@@ -467,6 +467,14 @@ public class LobbyService implements MatchEndListener {
         requireMatch(userId, matchId).resign(userId);
     }
 
+    public void offerDraw(long userId, String matchId) {
+        requireMatch(userId, matchId).offerDraw(userId);
+    }
+
+    public void answerDraw(long userId, String matchId, boolean accept) {
+        requireMatch(userId, matchId).answerDraw(userId, accept);
+    }
+
     /** Persists the result (rated matches only), then removes players who are no longer online from the room. */
     @Override
     public void onMatchEnded(GameMatch match) {

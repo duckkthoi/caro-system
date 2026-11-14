@@ -64,7 +64,13 @@ Khi một người chơi mất kết nối trong lúc trận đang diễn ra:
 
 Người chơi đang ở phòng `WAITING` hoặc `FINISHED` mà mất kết nối sẽ được tự động rời phòng.
 
-## 5. Phiên đăng nhập
+## 5. Tài khoản và phiên đăng nhập
+
+- `username`: 3–20 ký tự `a-z`, `0-9`, `_` (chữ hoa được đổi thành chữ thường).
+- Mật khẩu: tối thiểu 6 ký tự và tối đa **72 byte** UTF-8 (giới hạn của BCrypt). Chữ có dấu tốn 2–3 byte, nên mật khẩu
+  toàn chữ có dấu chỉ dài được khoảng 24–36 ký tự.
+- Tên hiển thị: tối đa 30 ký tự. Ký tự điều khiển (xuống dòng, tab...) bị thay bằng dấu cách. Bỏ trống thì dùng `username`.
+  Client phải hiển thị tên dưới dạng văn bản thuần (không diễn giải HTML).
 
 - **Mỗi tài khoản chỉ có một phiên hoạt động.** Đăng nhập ở nơi khác (Socket hay Web đều được) sẽ khiến
   phiên cũ nhận `KICKED` (lý do `LOGGED_IN_ELSEWHERE`) rồi bị đóng.
@@ -165,7 +171,8 @@ Server gửi lại danh sách cho mọi người mỗi khi có người vào/ra,
 - Rời phòng đang xem bằng `LEAVE_ROOM`. Người xem cũng tự rời khi: tạo phòng, vào phòng, được ghép trận, chấp nhận
   lời mời, chơi với máy, mất kết nối, hoặc khi phòng bị xóa (nhận `SPECTATE_ENDED`).
 - Người xem vẫn có thể vào hàng chờ tìm trận và được mời. Khi trận của chính mình bắt đầu thì tự rời phòng đang xem.
-- Người xem mất kết nối **không** được giữ chỗ: kết nối lại thì phải chọn xem lại.
+- Người xem mất kết nối **không** được giữ chỗ trên server. Sau khi kết nối lại, client tự gửi lại `SPECTATE` cho phòng
+  đang xem; nếu phòng đã đóng thì báo cho người dùng và quay về sảnh.
 
 ## 11. Chat trong phòng
 
@@ -195,7 +202,24 @@ Mỗi kết nối có hai "xô token" (token bucket). Mỗi thông điệp lấy
 |---|---|---|---|
 | Chung | Mọi thông điệp trừ `PING` | 20 | 10 thông điệp/giây |
 | Chat | `CHAT` (tính thêm, ngoài xô chung) | 5 | 1 tin nhắn mỗi 2 giây |
+| Đăng nhập / đăng ký | Theo **địa chỉ IP**: REST `/api/auth/login`, `/api/auth/register` và socket `LOGIN`, `REGISTER` | 20 | 1 lần mỗi 3 giây |
 
 - Hết token thì thông điệp bị **bỏ qua** (không được xử lý) và client nhận lỗi `RATE_LIMITED`. Kết nối không bị đóng.
 - `PING` không bị giới hạn để heartbeat không bao giờ bị chặn.
+- Giới hạn đăng nhập/đăng ký tính theo IP, nên mở kết nối mới không vượt qua được (chống dò mật khẩu). Khi đi qua
+  nginx, server lấy IP thật từ header `X-Real-IP`, nhưng chỉ tin header này nếu request tới từ địa chỉ nội bộ
+  (loopback hoặc mạng riêng, tức là chính proxy). REST bị giới hạn trả HTTP `429`.
+- Hạn chế đã biết: khi chạy bằng Docker Desktop, kết nối từ ngoài vào container bị NAT thành một IP gateway, nên mọi
+  người dùng chung một xô đăng nhập. Mức 20 lần dồn + 1 lần mỗi 3 giây vẫn đủ cho một lớp học đăng nhập cùng lúc.
 - Các con số trên cấu hình được trong `application.yml` (mục `caro.rate-limit.*`).
+
+## 14. Cầu hòa
+
+- Trong lúc trận đang diễn ra (`IN_PROGRESS`), một người chơi có thể **đề nghị hòa** (`OFFER_DRAW`), không cần đang tới lượt.
+  Đối thủ và người xem thấy lời đề nghị (`DRAW_OFFERED`). Đồng hồ lượt vẫn chạy bình thường.
+- Mỗi trận chỉ có **một** lời cầu hòa chờ trả lời tại một thời điểm. Bị từ chối thì phải chờ **có thêm ít nhất một nước đi**
+  mới được cầu hòa lại (chống spam).
+- Đối thủ **đồng ý** thì trận kết thúc **hòa** với lý do `AGREED`, Elo tính như hòa thường. **Từ chối** thì trận tiếp tục.
+- Lời cầu hòa tự hủy khi có người đi một nước (`DRAW_OFFER_CLOSED`, lý do `MOVED`), coi như không chấp nhận.
+- Người xem không cầu hòa và không trả lời được. Máy (bot) luôn từ chối.
+- Người kết nối lại thấy lời cầu hòa đang chờ trong `MatchState.drawOfferFrom`.

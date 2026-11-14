@@ -39,10 +39,10 @@ Hai loại client **đấu được với nhau trong cùng một trận**, vì c
 |---|---|
 | Tài khoản | Đăng ký, đăng nhập (JWT, mật khẩu băm BCrypt). Mỗi tài khoản chỉ một phiên: đăng nhập nơi khác sẽ đá phiên cũ |
 | Sảnh | Danh sách phòng và người online cập nhật trực tiếp; tạo/vào phòng; **mời người chơi**; **tìm trận nhanh** theo Elo |
-| Trận đấu | Bàn 15×15, 5 quân liên tiếp thắng, 30 giây mỗi lượt, đầu hàng, **chơi lại (đổi quân)**, tùy chọn **luật chặn hai đầu** khi tạo phòng |
+| Trận đấu | Bàn 15×15, 5 quân liên tiếp thắng, 30 giây mỗi lượt, đầu hàng, **cầu hòa**, **chơi lại (đổi quân)**, tùy chọn **luật chặn hai đầu** khi tạo phòng |
 | Trong phòng | **Xem trận** (tối đa 10 người xem mỗi phòng) và **chat** giữa người chơi và người xem |
 | Chơi với máy | Bot hai mức Dễ/Khó chạy trong server, đi qua đúng luật của người thật; không tính Elo, không lưu lịch sử |
-| Độ tin cậy | Heartbeat (PING 10 giây); mất mạng giữa trận thì trận **tạm dừng 30 giây** chờ người chơi tự kết nối lại; **giới hạn tần suất** (rate limit) theo kết nối để chống spam |
+| Độ tin cậy | Heartbeat (PING 10 giây); mất mạng giữa trận thì trận **tạm dừng 30 giây** chờ người chơi tự kết nối lại; **giới hạn tần suất** (rate limit) theo kết nối để chống spam, và theo IP cho đăng nhập/đăng ký để chống dò mật khẩu |
 | Dữ liệu | Elo (K=32), lịch sử đấu, **xem lại từng nước** của trận đã đấu, thống kê thắng/thua, bảng xếp hạng |
 | Quản trị | Thống kê hệ thống, tìm/khóa/mở khóa tài khoản (người đang chơi bị đá ra ngay), xem phòng và trận |
 
@@ -116,8 +116,8 @@ Chi tiết: [server](source/server/README.md) · [client desktop](source/client/
 ### Kiểm thử
 
 ```bash
-cd source/server && ./mvnw test                 # 68 test: luật chơi, Elo, ghép trận, bot, rate limit, integration qua TCP + WebSocket
-cd source/client/desktop && ./mvnw test         # tầng kết nối với server giả (thêm CARO_LIVE_PORT=9090 để chạy 4 test với server thật)
+cd source/server && ./mvnw test                 # 74 test: luật chơi, Elo, ghép trận, bot, cầu hòa, rate limit, integration qua TCP + WebSocket
+cd source/client/desktop && ./mvnw test         # tầng kết nối với server giả (thêm CARO_LIVE_PORT=9090 để chạy 5 test với server thật)
 cd source/client/web && npm test                # logic bàn cờ phía client
 ```
 
@@ -148,6 +148,7 @@ cd source/client/web && npm test                # logic bàn cờ phía client
 | `PLAY_BOT` | TCP/WS | `{"level"?: "EASY"\|"HARD","blockTwoEnds"?}` | `OK {"room"}` cùng `MATCH_START`; máy đi sau khoảng 0,5 giây |
 | `MOVE` | TCP/WS | `{"matchId","x","y"}` | `OK {"moveNo"}` cùng các sự kiện `MOVE_APPLIED`, `MATCH_END` |
 | `RESIGN` | TCP/WS | `{"matchId"}` | `OK` cùng sự kiện `MATCH_END` |
+| `OFFER_DRAW` / `ANSWER_DRAW` | TCP/WS | `{"matchId"}` / `{"matchId","accept"}` | Cầu hòa: đối thủ nhận `DRAW_OFFERED`; đồng ý thì `MATCH_END` hòa (`AGREED`), từ chối thì `DRAW_OFFER_CLOSED` |
 | `PING` | TCP/WS | (không có) | `PONG {"serverTime"}` (heartbeat mỗi 10 giây) |
 | `GET /api/users/{id}` · `GET_PROFILE` | HTTP · TCP/WS | `userId` | Hồ sơ, thống kê thắng/thua/hòa, hạng |
 | `GET /api/users/{id}/matches` · `GET_HISTORY` | HTTP · TCP/WS | `userId`, `page`, `size` | Lịch sử đấu (phân trang) |
@@ -272,6 +273,8 @@ caro-system/
 - [x] Tùy chọn luật chặn hai đầu khi tạo phòng.
 - [x] Bot đánh cùng máy để luyện tập (mức Dễ/Khó).
 - [x] Giới hạn tần suất request (rate limit) để chống spam.
+- [x] Cầu hòa (đề nghị hòa, đối thủ đồng ý hoặc từ chối).
+- [x] Giới hạn số lần đăng nhập/đăng ký theo IP (chống dò mật khẩu).
 - [ ] Lọc từ ngữ trong chat; lưu lịch sử chat của trận.
 - [ ] Thêm tùy chọn khi tạo phòng: bàn 19×19, thời gian mỗi lượt.
 - [ ] Bot mạnh hơn: tìm kiếm nhiều nước (minimax / alpha-beta) thay vì chỉ chấm điểm một nước.

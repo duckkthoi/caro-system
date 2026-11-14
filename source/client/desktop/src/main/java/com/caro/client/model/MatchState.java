@@ -6,7 +6,7 @@ import java.util.List;
 public record MatchState(String matchId, String roomId, int boardSize, boolean blockTwoEnds, boolean rated,
                          PlayerInfo playerX, PlayerInfo playerO, String yourMark, String status, String turn,
                          int moveCount, List<String> board, LastMove lastMove, Long turnDeadline, long turnTimeLeftMs,
-                         MatchResult result) {
+                         Long drawOfferFrom, MatchResult result) {
 
     public record LastMove(int x, int y, String mark) {
     }

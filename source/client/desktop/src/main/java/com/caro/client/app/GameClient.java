@@ -76,6 +76,7 @@ public final class GameClient {
     private boolean loggingOut;
     private String kickReason;
     private long reconnectUntil; // 0 = not reconnecting
+    private String rewatchRoomId; // room I was watching when the connection dropped
 
     /** @param ui where state changes and callbacks run: {@code SwingUtilities::invokeLater} in the app */
     public GameClient(Executor ui) {
@@ -230,6 +231,35 @@ public final class GameClient {
             return CompletableFuture.failedFuture(new ServerException("MATCH_NOT_FOUND", "Không có trận đấu"));
         }
         return request("MOVE", Map.of("matchId", match.matchId(), "x", x, "y", y)).thenAccept(ok -> { });
+    }
+
+    /** The opponent and the spectators get DRAW_OFFERED; I only get the OK. */
+    public CompletableFuture<Void> offerDraw() {
+        if (match == null) {
+            return CompletableFuture.failedFuture(new ServerException("MATCH_NOT_FOUND", "Không có trận đấu"));
+        }
+        MatchView asked = match;
+        int moveCount = match.moveCount();
+        return request("OFFER_DRAW", Map.of("matchId", match.matchId())).thenAccept(ok -> {
+            // if a move closed the offer before the OK arrived, it is already gone
+            if (match == asked && match.moveCount() == moveCount && !match.isFinished()) {
+                match.drawOffered(me.id());
+                fireMatch();
+            }
+        });
+    }
+
+    public CompletableFuture<Void> answerDraw(boolean accept) {
+        if (match == null) {
+            return CompletableFuture.failedFuture(new ServerException("MATCH_NOT_FOUND", "Không có trận đấu"));
+        }
+        MatchView asked = match;
+        return request("ANSWER_DRAW", Map.of("matchId", match.matchId(), "accept", accept)).thenAccept(ok -> {
+            if (!accept && match == asked) {
+                match.drawOfferClosed();
+                fireMatch();
+            }
+        });
     }
 
     public CompletableFuture<Void> resign() {
@@ -395,6 +425,9 @@ public final class GameClient {
             fire(l -> l.loggedOut(why));
             return;
         }
+        if (isSpectating()) {
+            rewatchRoomId = room.id(); // the server forgets spectators who drop: watch again after
+        }
         if (reconnectUntil == 0) {
             reconnectUntil = System.currentTimeMillis() + RECONNECT_WINDOW_MS;
             fire(l -> l.notice(reason + ". Đang thử kết nối lại..."));
@@ -459,16 +492,33 @@ public final class GameClient {
         return user;
     }
 
-    /** Fetches the room list, the online list and my room/match/queue (also after a reconnect). */
+    /**
+     * Fetches the room list, the online list and my room/match/queue (also after a reconnect). A spectator who
+     * dropped is not kept by the server (docs/rules.md, section 10), so the room is watched again here.
+     */
     private void synchronizeState() {
+        String rewatch = rewatchRoomId;
+        rewatchRoomId = null;
         request("LIST_ROOMS", Map.of()).thenAccept(data -> setRooms(data.path("rooms")));
         request("LIST_ONLINE", Map.of()).thenAccept(data -> setOnline(data.path("users")));
         request("GET_STATE", Map.of()).thenAccept(data -> {
             JsonNode roomNode = data.path("room");
             JsonNode matchNode = data.path("match");
+            setQueue(Json.convert(data.path("queue"), QueueStatus.class));
+            if (!roomNode.isObject() && rewatch != null) {
+                spectate(rewatch).whenComplete((room, error) -> {
+                    if (error == null) {
+                        fire(l -> l.notice("Đã kết nối lại, tiếp tục xem phòng."));
+                    } else {
+                        setRoom(null);
+                        setMatch(null);
+                        fire(l -> l.notice("Phòng bạn đang xem đã đóng trong lúc mất kết nối."));
+                    }
+                });
+                return;
+            }
             setRoom(roomNode.isObject() ? Json.convert(roomNode, RoomInfo.class) : null);
             setMatch(matchNode.isObject() ? MatchView.of(Json.convert(matchNode, MatchState.class)) : null);
-            setQueue(Json.convert(data.path("queue"), QueueStatus.class));
         });
     }
 
@@ -502,6 +552,26 @@ public final class GameClient {
                     String text = match.isSpectating() ? "Người chơi đã kết nối lại."
                             : "Đối thủ đã kết nối lại. Trận tiếp tục.";
                     fire(l -> l.notice(text));
+                }
+            }
+            case "DRAW_OFFERED" -> {
+                if (isCurrentMatch(data.path("matchId").asText())) {
+                    match.drawOffered(data.path("fromId").asLong());
+                    fireMatch();
+                    if (!match.isSpectating()) {
+                        fire(l -> l.notice("Đối thủ đề nghị hòa."));
+                    }
+                }
+            }
+            case "DRAW_OFFER_CLOSED" -> {
+                if (isCurrentMatch(data.path("matchId").asText())) {
+                    Long from = match.drawOfferFrom();
+                    boolean mine = from != null && me != null && from == me.id();
+                    match.drawOfferClosed();
+                    fireMatch();
+                    if (mine && "DECLINED".equals(data.path("reason").asText())) {
+                        fire(l -> l.notice("Đối thủ đã từ chối hòa."));
+                    }
                 }
             }
             case "CHAT_MESSAGE" -> {

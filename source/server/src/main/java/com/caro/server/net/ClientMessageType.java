@@ -27,7 +27,9 @@ public enum ClientMessageType {
     REMATCH(true),
     SPECTATE(true),
     CHAT(true),
-    PLAY_BOT(true);
+    PLAY_BOT(true),
+    OFFER_DRAW(true),
+    ANSWER_DRAW(true);
 
     private final boolean requiresAuth;
 

@@ -239,4 +239,34 @@ class GameClientLiveTest {
         c.await("bot match over", () -> c.client.match().isFinished());
         assertEquals(1000, c.read(() -> c.client.me().rating()));
     }
+
+    @Test
+    void drawByAgreementAndASpectatorWatchesAgainAfterADrop() throws Exception {
+        Player a = player();
+        Player b = player();
+        Player c = player();
+        a.register();
+        b.register();
+        c.register();
+        String roomId = a.call(() -> a.client.createRoom(null)).id();
+        b.call(() -> b.client.joinRoom(roomId));
+        a.await("match start", () -> a.client.match() != null && a.client.match().isInProgress());
+        c.call(() -> c.client.spectate(roomId));
+        c.await("watching", () -> c.client.match() != null);
+
+        // the spectator's connection drops: the client watches the same room again by itself
+        c.ui.submit(c.client::simulateNetworkFailure).get(5, TimeUnit.SECONDS);
+        c.await("watching again", () -> c.notices.contains("Đã kết nối lại, tiếp tục xem phòng."));
+        assertTrue(c.read(() -> c.client.isSpectating()));
+
+        long aId = a.read(() -> a.client.me().id());
+        a.call(() -> a.client.offerDraw());
+        b.await("offer seen", () -> Long.valueOf(aId).equals(b.client.match().drawOfferFrom()));
+        c.await("offer seen by spectator", () -> c.client.match().drawOfferFrom() != null);
+        b.call(() -> b.client.answerDraw(true));
+        a.await("draw", () -> a.client.match().isFinished());
+        assertEquals("DRAW", a.read(() -> a.client.match().result().result()));
+        assertEquals("AGREED", a.read(() -> a.client.match().result().reason()));
+        c.await("spectator sees the end", () -> c.client.match().isFinished());
+    }
 }

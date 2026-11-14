@@ -7,12 +7,14 @@ import { canPlay, isMyTurn, myRatingChange, opponentOf, turnTimeLeft } from '../
 import { isSpectating, latestPlayer, store, useStore } from '../state/store';
 import * as T from '../texts';
 import { Board, Stone } from './Board';
+import { useConfirm } from './Confirm';
 import { useAction, useServerNow } from './hooks';
 
 /** My room (or the room I watch): board, players, turn clock, match buttons and chat. */
 export function Room() {
   const { room, match, me } = useStore();
   const [busy, run] = useAction();
+  const confirm = useConfirm();
   const [movePending, setMovePending] = useState(false);
   const [picking, setPicking] = useState(false);
   const live = match !== null && match.status !== 'FINISHED' && room?.status !== 'WAITING';
@@ -27,12 +29,24 @@ export function Room() {
       .catch((e) => store.notify(e.message, 'error'))
       .finally(() => setMovePending(false));
   };
-  const leave = () => {
-    if (live && !watching && !confirm('Rời phòng khi đang đấu sẽ bị tính là thua. Tiếp tục?')) return;
+  const leave = async () => {
+    if (live && !watching && !(await confirm({
+      title: 'Rời phòng?',
+      message: 'Trận đấu đang diễn ra. Rời phòng bây giờ sẽ bị tính là thua.',
+      confirmLabel: 'Rời phòng',
+      cancelLabel: 'Ở lại',
+      danger: true,
+    }))) return;
     run(() => store.leaveRoom());
   };
-  const resign = () => {
-    if (confirm('Bạn chắc chắn muốn đầu hàng?')) run(() => store.resign());
+  const resign = async () => {
+    if (await confirm({
+      title: 'Đầu hàng?',
+      message: 'Bạn sẽ thua ván này ngay lập tức.',
+      confirmLabel: 'Đầu hàng',
+      cancelLabel: 'Chơi tiếp',
+      danger: true,
+    })) run(() => store.resign());
   };
 
   const [x, o] = seats(room, match);
@@ -79,9 +93,13 @@ export function Room() {
                 {askedRematch ? 'Đã gửi yêu cầu chơi lại' : 'Chơi lại (đổi quân)'}
               </button>
             )}
+            {live && match && <DrawControls match={match} meId={me.id} />}
             {live && <button type="button" disabled={busy} onClick={resign}>Đầu hàng</button>}
             <button type="button" disabled={busy} onClick={leave}>Rời phòng</button>
           </div>
+        )}
+        {watching && live && match?.drawOfferFrom != null && (
+          <p className="draw-note">{nameOf(match, match.drawOfferFrom)} đề nghị hòa.</p>
         )}
         {room.spectators.length > 0 && (
           <p className="muted spectators">
@@ -101,6 +119,35 @@ function seats(room: RoomInfo, match: MatchView | null): [PlayerInfo | null, Pla
     return [latestPlayer(room, match.playerX), latestPlayer(room, match.playerO)];
   }
   return [room.players[0] ?? null, room.players[1] ?? null];
+}
+
+/** Offer a draw, or answer the opponent's offer (docs/rules.md, section 14). */
+function DrawControls({ match, meId }: { match: MatchView; meId: number }) {
+  const [busy, run] = useAction();
+  const offer = match.drawOfferFrom;
+  if (offer !== null && offer !== meId) {
+    return (
+      <div className="draw-offer" role="alert">
+        <p><strong>Đối thủ đề nghị hòa.</strong> Đồng ý thì ván này kết thúc hòa.</p>
+        <div className="actions">
+          <button type="button" disabled={busy} onClick={() => run(() => store.answerDraw(false))}>Từ chối</button>
+          <button type="button" className="primary" disabled={busy} onClick={() => run(() => store.answerDraw(true))}>
+            Đồng ý hòa
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <button type="button" disabled={busy || offer !== null || match.status !== 'IN_PROGRESS'}
+      onClick={() => run(() => store.offerDraw())}>
+      {offer === meId ? 'Đã cầu hòa, chờ đối thủ...' : 'Cầu hòa'}
+    </button>
+  );
+}
+
+function nameOf(match: MatchView, userId: number): string {
+  return match.playerX.id === userId ? match.playerX.displayName : match.playerO.displayName;
 }
 
 function RoomTags({ room, watching }: { room: RoomInfo; watching: boolean }) {

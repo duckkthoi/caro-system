@@ -88,6 +88,7 @@ class GameStore {
   private noticeSeq = 0;
   private chatSeq = 0;
   private restoreStarted = false;
+  private rewatchRoomId: string | null = null; // room I was watching when the connection dropped
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -206,6 +207,28 @@ class GameStore {
     }
   }
 
+  /** The opponent and the spectators get DRAW_OFFERED; I only get the OK. */
+  async offerDraw(): Promise<void> {
+    const match = this.state.match;
+    if (!match) return;
+    await this.request('OFFER_DRAW', { matchId: match.matchId });
+    const now = this.state.match;
+    // if a move closed the offer before the OK arrived, it is already gone
+    if (now && now.matchId === match.matchId && now.moveCount === match.moveCount && now.status !== 'FINISHED') {
+      this.set({ match: M.drawOffered(now, this.state.me!.id) });
+    }
+  }
+
+  async answerDraw(accept: boolean): Promise<void> {
+    const match = this.state.match;
+    if (!match) return;
+    await this.request('ANSWER_DRAW', { matchId: match.matchId, accept });
+    const now = this.state.match;
+    if (!accept && now && now.matchId === match.matchId) {
+      this.set({ match: M.drawOfferClosed(now) });
+    }
+  }
+
   // ---------------------------------------------------------------- notices
 
   notify(text: string, kind: Notice['kind'] = 'info'): void {
@@ -275,6 +298,9 @@ class GameStore {
       this.reset(this.kickReason);
       return;
     }
+    if (isSpectating(this.state.room, this.state.me)) {
+      this.rewatchRoomId = this.state.room!.id; // the server forgets spectators who drop: watch again after
+    }
     if (this.reconnectUntil === 0) {
       this.reconnectUntil = Date.now() + RECONNECT_WINDOW_MS;
       this.notify(`${reason}. Đang thử kết nối lại...`, 'error');
@@ -306,14 +332,29 @@ class GameStore {
     }
   }
 
-  /** Room list, online list and my room/match/queue: after login and after every reconnect. */
+  /**
+   * Room list, online list and my room/match/queue: after login and after every reconnect. A spectator who dropped
+   * is not kept by the server (docs/rules.md, section 10), so the room is watched again here.
+   */
   private synchronize(): void {
+    const rewatch = this.rewatchRoomId;
+    this.rewatchRoomId = null;
     this.request<{ rooms: RoomInfo[] }>('LIST_ROOMS').then((d) => this.set({ rooms: d.rooms })).catch(() => undefined);
     this.request<{ users: OnlineUser[] }>('LIST_ONLINE').then((d) => this.set({ online: d.users })).catch(() => undefined);
     this.request<{ room: RoomInfo | null; match: MatchState | null; queue: QueueStatus }>('GET_STATE')
       .then((d) => {
+        this.set({ queue: d.queue });
+        if (!d.room && rewatch) {
+          this.spectate(rewatch)
+            .then(() => this.notify('Đã kết nối lại, tiếp tục xem phòng.'))
+            .catch(() => {
+              this.set({ room: null, match: null, chat: [] });
+              this.notify('Phòng bạn đang xem đã đóng trong lúc mất kết nối.');
+            });
+          return;
+        }
         this.setRoom(d.room);
-        this.set({ match: d.match ? M.fromState(d.match) : null, queue: d.queue });
+        this.set({ match: d.match ? M.fromState(d.match) : null });
       })
       .catch(() => undefined);
   }
@@ -357,6 +398,19 @@ class GameStore {
         if (current(data.matchId)) {
           this.set({ match: M.opponentReconnected(match!, data.turnDeadline) });
           this.notify(match!.myMark ? 'Đối thủ đã kết nối lại. Trận tiếp tục.' : 'Người chơi đã kết nối lại.');
+        }
+        break;
+      case 'DRAW_OFFERED':
+        if (current(data.matchId)) {
+          this.set({ match: M.drawOffered(match!, data.fromId) });
+          if (match!.myMark) this.notify('Đối thủ đề nghị hòa.');
+        }
+        break;
+      case 'DRAW_OFFER_CLOSED':
+        if (current(data.matchId)) {
+          const mine = match!.drawOfferFrom === this.state.me?.id;
+          this.set({ match: M.drawOfferClosed(match!) });
+          if (mine && data.reason === 'DECLINED') this.notify('Đối thủ đã từ chối hòa.');
         }
         break;
       case 'CHAT_MESSAGE':

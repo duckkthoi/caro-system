@@ -71,6 +71,16 @@ public final class BotPlayer {
         if (type == ServerMessageType.MATCH_START || type == ServerMessageType.MOVE_APPLIED
                 || type == ServerMessageType.OPPONENT_RECONNECTED) {
             scheduler.schedule(this::think, moveDelayMs, TimeUnit.MILLISECONDS);
+        } else if (type == ServerMessageType.DRAW_OFFERED) {
+            scheduler.schedule(this::declineDraw, moveDelayMs, TimeUnit.MILLISECONDS); // the bot never agrees
+        }
+    }
+
+    private void declineDraw() {
+        try {
+            match.answerDraw(ID, false);
+        } catch (AppException e) {
+            log.debug("Bot draw answer in match {} skipped: {}", match.id(), e.getMessage());
         }
     }
 

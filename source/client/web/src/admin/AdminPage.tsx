@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import type { AdminUserView, MatchSummary, Page, RoomInfo, SystemStats } from '../api/protocol';
 import { rest } from '../api/rest';
+import { useConfirm } from '../components/Confirm';
 import { useAction, useLoad } from '../components/hooks';
 import { Pager, Stat, useModals } from '../components/Modals';
 import { useStore } from '../state/store';
@@ -51,11 +52,17 @@ function Users({ onChange }: { onChange: () => void }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [busy, run] = useAction();
+  const confirm = useConfirm();
   const users = useLoad<Page<AdminUserView>>(() => rest.admin.users(token!, search, page), [search, page]);
 
-  const toggle = (u: AdminUserView) => {
+  const toggle = async (u: AdminUserView) => {
     const locking = u.status === 'ACTIVE';
-    if (locking && !confirm(`Khóa tài khoản ${u.username}? Nếu đang online, người này sẽ bị đá ra ngay.`)) return;
+    if (locking && !(await confirm({
+      title: `Khóa tài khoản ${u.username}?`,
+      message: 'Nếu đang online, người này sẽ bị đá ra ngay. Trận đang chơi được xử lý như mất kết nối.',
+      confirmLabel: 'Khóa',
+      danger: true,
+    }))) return;
     run(async () => {
       await (locking ? rest.admin.lock(token!, u.id) : rest.admin.unlock(token!, u.id));
       users.reload();
@@ -118,7 +125,9 @@ function Rooms() {
       {rooms.data && rooms.data.length === 0 && <p className="muted empty">Không có phòng nào.</p>}
       {rooms.data && rooms.data.length > 0 && (
         <table>
-          <thead><tr><th>ID</th><th>Tên</th><th>Trạng thái</th><th>Người chơi</th></tr></thead>
+          <thead>
+            <tr><th>ID</th><th>Tên</th><th>Trạng thái</th><th>Người chơi</th><th>Loại / luật</th><th>Người xem</th></tr>
+          </thead>
           <tbody>
             {rooms.data.map((r) => (
               <tr key={r.id}>
@@ -126,6 +135,14 @@ function Rooms() {
                 <td>{r.name}</td>
                 <td><span className={`badge status-${r.status}`}>{T.roomStatus[r.status]}</span></td>
                 <td>{r.players.map((p) => T.player(p)).join(' vs ')}</td>
+                <td>
+                  {r.botLevel ? `Chơi với máy (${T.botLevel[r.botLevel]})` : 'Hai người'}
+                  {r.blockTwoEnds && <span className="badge tag">Chặn hai đầu</span>}
+                </td>
+                <td>
+                  {r.spectators.length === 0 ? <span className="muted">0</span>
+                    : `${r.spectators.length}: ${r.spectators.map((p) => p.displayName).join(', ')}`}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -156,7 +173,7 @@ function Matches() {
                   <td>{T.player(m.playerX)}</td>
                   <td>{T.player(m.playerO)}</td>
                   <td>{T.result[m.result]}</td>
-                  <td>{T.reason[m.reason]}</td>
+                  <td>{T.reason[m.reason]}{m.blockTwoEnds && <span className="badge tag">Chặn hai đầu</span>}</td>
                   <td className="num">{T.signed(m.ratingChange.X)} / {T.signed(m.ratingChange.O)}</td>
                   <td className="num">{m.totalMoves}</td>
                   <td className="right">
