@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useTheme } from '../state/theme';
 import type { FormEvent } from 'react';
 
 import { errorMessage } from '../api/protocol';
 import { store, useStore } from '../state/store';
 
 export function Login() {
+  const { setTheme, theme } = useTheme();
+  useEffect(() => {
+    const previous = theme;
+    setTheme('light');
+    return () => setTheme(previous);
+  }, []);
   const { logoutReason, connection } = useStore();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState(() => localStorage.getItem('caro.username') ?? '');
@@ -32,7 +39,7 @@ export function Login() {
   };
 
   return (
-    <main className="login">
+    <main className="login" data-theme="light">
       <form className="card login-card" onSubmit={submit}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
           <div style={{
