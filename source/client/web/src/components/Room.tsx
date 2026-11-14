@@ -31,20 +31,20 @@ export function Room() {
   };
   const leave = async () => {
     if (live && !watching && !(await confirm({
-      title: 'Rời phòng?',
-      message: 'Trận đấu đang diễn ra. Rời phòng bây giờ sẽ bị tính là thua.',
+      title: 'Rời phòng thi đấu?',
+      message: 'Trận đấu đang diễn ra. Nếu rời phòng lúc này, bạn sẽ bị xử thua ngay lập tức.',
       confirmLabel: 'Rời phòng',
-      cancelLabel: 'Ở lại',
+      cancelLabel: 'Ở lại chơi',
       danger: true,
     }))) return;
     run(() => store.leaveRoom());
   };
   const resign = async () => {
     if (await confirm({
-      title: 'Đầu hàng?',
-      message: 'Bạn sẽ thua ván này ngay lập tức.',
+      title: 'Xác nhận đầu hàng?',
+      message: 'Bạn sẽ nhận kết quả thua ván này ngay lập tức.',
       confirmLabel: 'Đầu hàng',
-      cancelLabel: 'Chơi tiếp',
+      cancelLabel: 'Tiếp tục đấu',
       danger: true,
     })) run(() => store.resign());
   };
@@ -69,17 +69,31 @@ export function Room() {
           <h2>{room.name}</h2>
           <RoomTags room={room} watching={watching} />
         </div>
-        <PlayerCard mark="X" player={x} me={me.id} active={turn === 'X'} />
-        <PlayerCard mark="O" player={o} me={me.id} active={turn === 'O'} />
 
+        {/* VS Battle Arena Players */}
+        <div className="vs-arena">
+          <PlayerCard mark="X" player={x} me={me.id} active={turn === 'X'} />
+          <div style={{ textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.1em' }}>
+            VS
+          </div>
+          <PlayerCard mark="O" player={o} me={me.id} active={turn === 'O'} />
+        </div>
+
+        {/* Precision Clock Widget */}
         {live && match && (
-          <div className={`clock ${timeLeft <= 10_000 && match.status === 'IN_PROGRESS' ? 'low' : ''}`}>
-            {T.clock(timeLeft)}
+          <div className="clock-widget">
+            <span className="clock-widget-label">Thời gian lượt đi</span>
+            <div className={`clock ${timeLeft <= 10_000 && match.status === 'IN_PROGRESS' ? 'low' : ''}`}>
+              {T.clock(timeLeft)}
+            </div>
           </div>
         )}
-        <p className="status">
-          {watching ? spectatorText(room, match, now) : statusText(room, match, me.id, now)}
-        </p>
+
+        <div className="status-box">
+          <p className="status">
+            {watching ? spectatorText(room, match, now) : statusText(room, match, me.id, now)}
+          </p>
+        </div>
 
         {watching ? (
           <div className="side-actions">
@@ -88,11 +102,19 @@ export function Room() {
         ) : (
           <div className="side-actions">
             {room.status === 'WAITING' && (
-              <button type="button" className="primary" onClick={() => setPicking(true)}>Mời người chơi</button>
+              <button type="button" className="primary" onClick={() => setPicking(true)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="8.5" cy="7" r="4" />
+                  <line x1="20" y1="8" x2="20" y2="14" />
+                  <line x1="23" y1="11" x2="17" y2="11" />
+                </svg>
+                Mời người chơi
+              </button>
             )}
             {room.status === 'FINISHED' && (
               <button type="button" className="primary" disabled={busy || askedRematch} onClick={() => run(() => store.rematch())}>
-                {askedRematch ? 'Đã gửi yêu cầu chơi lại' : 'Chơi lại (đổi quân)'}
+                {askedRematch ? 'Đã gửi lời mời tái đấu...' : 'Tái đấu (Đổi quân)'}
               </button>
             )}
             {live && match && <DrawControls match={match} meId={me.id} />}
@@ -100,14 +122,17 @@ export function Room() {
             <button type="button" disabled={busy} onClick={leave}>Rời phòng</button>
           </div>
         )}
+
         {watching && live && match?.drawOfferFrom != null && (
-          <p className="draw-note">{nameOf(match, match.drawOfferFrom)} đề nghị hòa.</p>
+          <p className="draw-note">{nameOf(match, match.drawOfferFrom)} đề nghị hòa ván này.</p>
         )}
+
         {room.spectators.length > 0 && (
           <p className="muted spectators">
-            Người xem ({room.spectators.length}): {room.spectators.map((p) => p.displayName).join(', ')}
+            Khán giả ({room.spectators.length}): {room.spectators.map((p) => p.displayName).join(', ')}
           </p>
         )}
+
         <Chat />
       </aside>
       {picking && <InvitePicker onClose={() => setPicking(false)} />}
@@ -130,7 +155,7 @@ function DrawControls({ match, meId }: { match: MatchView; meId: number }) {
   if (offer !== null && offer !== meId) {
     return (
       <div className="draw-offer" role="alert">
-        <p><strong>Đối thủ đề nghị hòa.</strong> Đồng ý thì ván này kết thúc hòa.</p>
+        <p><strong>Đối thủ gửi đề nghị hòa.</strong> Nếu đồng ý, ván cờ sẽ kết thúc với kết quả hòa.</p>
         <div className="actions">
           <button type="button" disabled={busy} onClick={() => run(() => store.answerDraw(false))}>Từ chối</button>
           <button type="button" className="primary" disabled={busy} onClick={() => run(() => store.answerDraw(true))}>
@@ -143,7 +168,7 @@ function DrawControls({ match, meId }: { match: MatchView; meId: number }) {
   return (
     <button type="button" disabled={busy || offer !== null || match.status !== 'IN_PROGRESS'}
       onClick={() => run(() => store.offerDraw())}>
-      {offer === meId ? 'Đã cầu hòa, chờ đối thủ...' : 'Cầu hòa'}
+      {offer === meId ? 'Đã gửi lời cầu hòa...' : 'Cầu hòa'}
     </button>
   );
 }
@@ -156,9 +181,9 @@ function RoomTags({ room, watching }: { room: RoomInfo; watching: boolean }) {
   if (!watching && !room.blockTwoEnds && !room.botLevel) return null;
   return (
     <div className="tags">
-      {watching && <span className="badge presence-SPECTATING">Bạn đang xem</span>}
-      {room.botLevel && <span className="badge">Chơi với máy · {T.botLevel[room.botLevel]}</span>}
-      {room.blockTwoEnds && <span className="badge">{T.BLOCK_TWO_ENDS}</span>}
+      {watching && <span className="badge presence-SPECTATING">Đang theo dõi</span>}
+      {room.botLevel && <span className="badge tag" style={{ background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe' }}>Máy · {T.botLevel[room.botLevel]}</span>}
+      {room.blockTwoEnds && <span className="badge tag" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>{T.BLOCK_TWO_ENDS}</span>}
     </div>
   );
 }
@@ -170,35 +195,35 @@ function spectatorText(room: RoomInfo, match: MatchView | null, now: number): st
     return r ? `${T.result[r.result]}: ${T.reason[r.reason]}.` : 'Trận đấu đã kết thúc.';
   }
   if (match.status === 'PAUSED') {
-    return `Một người chơi mất kết nối. Chờ quay lại: ${T.clock((match.graceDeadline ?? now) - now)}`;
+    return `Người chơi tạm mất kết nối. Chờ quay lại: ${T.clock((match.graceDeadline ?? now) - now)}`;
   }
   const player = match.turn === 'X' ? match.playerX : match.playerO;
-  return `Đến lượt ${player.displayName} (${match.turn})`;
+  return `Đang đến lượt ${player.displayName} (${match.turn})`;
 }
 
 function statusText(room: RoomInfo, match: MatchView | null, myId: number, now: number): string {
-  if (room.status === 'WAITING') return 'Đang chờ đối thủ vào phòng... Bạn có thể mời một người đang online.';
+  if (room.status === 'WAITING') return 'Đang chờ đối thủ vào phòng... Bạn có thể mời một người chơi đang online.';
   if (!match) return '';
   if (match.status === 'FINISHED') {
     let text = resultText(match, myId);
     const opponentAsked = room.rematchRequests.includes(opponentOf(match).id);
-    if (room.rematchRequests.includes(myId)) text += ' Đang chờ đối thủ đồng ý chơi lại...';
-    else if (opponentAsked) text += ' Đối thủ muốn chơi lại!';
+    if (room.rematchRequests.includes(myId)) text += ' Đang chờ đối thủ đồng ý tái đấu...';
+    else if (opponentAsked) text += ' Đối thủ đề nghị tái đấu!';
     return text;
   }
   if (match.status === 'PAUSED') {
-    return `Đối thủ mất kết nối. Chờ đối thủ quay lại: ${T.clock((match.graceDeadline ?? now) - now)}`;
+    return `Đối thủ mất kết nối. Đang chờ quay lại: ${T.clock((match.graceDeadline ?? now) - now)}`;
   }
-  return isMyTurn(match) ? 'Đến lượt bạn' : 'Đang chờ đối thủ đi...';
+  return isMyTurn(match) ? '🎯 Đến lượt bạn đi quân!' : '⏳ Đang chờ đối thủ suy nghĩ...';
 }
 
 function resultText(match: MatchView, myId: number): string {
   const r: MatchResult | null = match.result;
   if (!r) return 'Trận đấu đã kết thúc.';
   const elo = match.rated ? ` (${T.signed(myRatingChange(match, r))} Elo)` : '';
-  if (r.result === 'ABORTED') return `Trận bị hủy: ${T.reason[r.reason]}. Không tính điểm.`;
-  if (r.result === 'DRAW') return `Hòa: ${T.reason[r.reason]}${elo}.`;
-  return `${r.winnerId === myId ? 'Bạn thắng!' : 'Bạn thua.'} ${T.reason[r.reason]}${elo}.`;
+  if (r.result === 'ABORTED') return `Trận đấu bị hủy: ${T.reason[r.reason]}. Không tính điểm.`;
+  if (r.result === 'DRAW') return `Ván cờ kết thúc Hòa: ${T.reason[r.reason]}${elo}.`;
+  return `${r.winnerId === myId ? '🏆 Bạn đã chiến thắng!' : '😢 Bạn đã thua.'} ${T.reason[r.reason]}${elo}.`;
 }
 
 function PlayerCard({ mark, player, me, active }: { mark: 'X' | 'O'; player: PlayerInfo | null; me: number; active: boolean }) {
@@ -206,9 +231,12 @@ function PlayerCard({ mark, player, me, active }: { mark: 'X' | 'O'; player: Pla
     <div className={`player-card ${active ? `active active-${mark}` : ''}`}>
       <Stone mark={mark} />
       <div>
-        <strong>{player ? player.displayName : '(trống)'}{player?.id === me && <span className="you"> (bạn)</span>}</strong>
+        <strong>
+          {player ? player.displayName : '(Đang chờ...)'}
+          {player?.id === me && <span className="you"> (Bạn)</span>}
+        </strong>
         <span className="muted">
-          {!player ? 'Đang chờ người chơi' : player.id === BOT_ID ? 'Máy tính' : `@${player.username} · Elo ${player.rating}`}
+          {!player ? 'Chưa có người vào' : player.id === BOT_ID ? 'Trí tuệ nhân tạo' : `@${player.username} · Elo ${player.rating}`}
         </span>
       </div>
     </div>
@@ -223,18 +251,23 @@ function InvitePicker({ onClose }: { onClose: () => void }) {
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-label="Mời người chơi">
         <header>
-          <h2>Mời người chơi</h2>
+          <h2>Mời đối thủ thi đấu</h2>
           <button type="button" className="ghost" onClick={onClose} aria-label="Đóng">✕</button>
         </header>
         <div className="modal-body">
           {candidates.length === 0 ? (
-            <p className="muted">Hiện không có người chơi nào rảnh để mời.</p>
+            <div className="empty">
+              <p className="muted">Hiện tại không có người chơi nào đang rảnh để mời.</p>
+            </div>
           ) : (
             <ul className="people">
               {candidates.map((u) => (
                 <li key={u.id}>
-                  <strong>{u.displayName}</strong>
-                  <span className="muted"> @{u.username} · {u.rating}</span>
+                  <span className="avatar-badge">{u.displayName.charAt(0).toUpperCase()}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <strong>{u.displayName}</strong>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>@{u.username} · Elo {u.rating}</span>
+                  </div>
                   <span className={`badge presence-${u.status}`}>{T.presence[u.status]}</span>
                   <button
                     type="button"
@@ -242,7 +275,7 @@ function InvitePicker({ onClose }: { onClose: () => void }) {
                     disabled={busy || outgoing !== null}
                     onClick={() => run(async () => { await store.invite(u); onClose(); })}
                   >
-                    Mời
+                    Mời đấu
                   </button>
                 </li>
               ))}
@@ -254,7 +287,7 @@ function InvitePicker({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Room chat (docs/rules.md, section 11). Messages are plain text: React escapes them. */
+/** Room chat. */
 function Chat() {
   const { chat, me } = useStore();
   const [text, setText] = useState('');
@@ -273,14 +306,17 @@ function Chat() {
   };
   return (
     <section className="chat">
-      <h3>Trò chuyện</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h3>Trò chuyện trận đấu</h3>
+        <span className="muted" style={{ fontSize: '0.75rem' }}>{chat.length} tin nhắn</span>
+      </div>
       <div className="chat-log" ref={log} aria-live="polite">
-        {chat.length === 0 && <p className="muted">Chưa có tin nhắn.</p>}
+        {chat.length === 0 && <p className="muted" style={{ textAlign: 'center', margin: 'auto 0' }}>Chưa có tin nhắn nào trong phòng.</p>}
         {chat.map((m) => (
           <p key={m.id} className={m.from.id === me?.id ? 'mine' : ''}>
             <strong>{m.from.displayName}</strong>
-            {m.spectator && <span className="muted"> (người xem)</span>}
-            <span className="muted"> · {T.time(m.sentAt)}</span>
+            {m.spectator && <span className="muted"> (Khán giả)</span>}
+            <span className="muted" style={{ fontSize: '0.75rem' }}> · {T.time(m.sentAt)}</span>
             <br />
             {m.text}
           </p>

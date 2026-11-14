@@ -68,8 +68,13 @@ function TopBar({ admin, onAdmin }: { admin: boolean; onAdmin: (on: boolean) => 
         <span className="dot" style={{ backgroundColor: connection === 'connected' ? 'var(--success)' : connection === 'reconnecting' ? 'var(--danger)' : 'var(--text-dim)', margin: 0 }} />
         {connectionText[connection]}
       </span>
-      <button type="button" className="link me" onClick={() => modals.openProfile(me.id)}>
-        {me.displayName} · <strong>{me.rating}</strong>
+      <button type="button" className="link me-pill" onClick={() => modals.openProfile(me.id)}>
+        <span className="avatar-badge" aria-hidden="true">
+          {me.displayName ? me.displayName.charAt(0).toUpperCase() : me.username.charAt(0).toUpperCase()}
+        </span>
+        <span>{me.displayName}</span>
+        <span className="muted">·</span>
+        <strong>{me.rating}</strong>
       </button>
       <button type="button" onClick={() => modals.openHistory(me.id, 'Lịch sử đấu của bạn')}>Lịch sử</button>
       <button type="button" onClick={modals.openLeaderboard}>Bảng xếp hạng</button>
