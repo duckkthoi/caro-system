@@ -19,25 +19,28 @@ export function AdminPage() {
     <main className="admin">
       <section className="card">
         <header className="section-head">
-          <h2>Thống kê hệ thống</h2>
+          <div>
+            <h2>Thống kê tổng quan</h2>
+            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>Số liệu người dùng và hoạt động thời gian thực</p>
+          </div>
           <button type="button" className="small" onClick={stats.reload}>Làm mới</button>
         </header>
         {stats.data && (
           <div className="stats">
-            <Stat label="Tài khoản" value={stats.data.totalUsers} />
-            <Stat label="Bị khóa" value={stats.data.lockedUsers} />
-            <Stat label="Đang online" value={stats.data.onlineUsers} />
-            <Stat label="Phòng mở" value={stats.data.rooms} />
+            <Stat label="Tổng tài khoản" value={stats.data.totalUsers} />
+            <Stat label="Tài khoản bị khóa" value={stats.data.lockedUsers} />
+            <Stat label="Đang trực tuyến" value={stats.data.onlineUsers} />
+            <Stat label="Phòng đang mở" value={stats.data.rooms} />
             <Stat label="Trận đang đấu" value={stats.data.activeMatches} />
-            <Stat label="Trận đã lưu" value={stats.data.totalMatches} />
-            <Stat label="Trận 24 giờ qua" value={stats.data.matchesLast24h} />
+            <Stat label="Tổng trận đã lưu" value={stats.data.totalMatches} />
+            <Stat label="Trận trong 24h" value={stats.data.matchesLast24h} />
           </div>
         )}
       </section>
-      <div className="tabs">
-        <button type="button" className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Người dùng</button>
-        <button type="button" className={tab === 'rooms' ? 'active' : ''} onClick={() => setTab('rooms')}>Phòng</button>
-        <button type="button" className={tab === 'matches' ? 'active' : ''} onClick={() => setTab('matches')}>Trận đấu</button>
+      <div className="tabs" style={{ alignSelf: 'flex-start' }}>
+        <button type="button" className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Quản lý tài khoản</button>
+        <button type="button" className={tab === 'rooms' ? 'active' : ''} onClick={() => setTab('rooms')}>Danh sách phòng</button>
+        <button type="button" className={tab === 'matches' ? 'active' : ''} onClick={() => setTab('matches')}>Lịch sử trận đấu</button>
       </div>
       {tab === 'users' && <Users onChange={stats.reload} />}
       {tab === 'rooms' && <Rooms />}
@@ -72,10 +75,13 @@ function Users({ onChange }: { onChange: () => void }) {
 
   return (
     <section className="card">
-      <form className="inline-form" onSubmit={(e) => { e.preventDefault(); setPage(0); setSearch(query.trim()); }}>
-        <input placeholder="Tìm theo username hoặc tên hiển thị" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <button type="submit">Tìm</button>
-      </form>
+      <div className="section-head">
+        <h2>Danh sách người dùng</h2>
+        <form className="inline-form" onSubmit={(e) => { e.preventDefault(); setPage(0); setSearch(query.trim()); }}>
+          <input placeholder="Tìm theo username hoặc tên..." value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button type="submit" className="primary">Tìm kiếm</button>
+        </form>
+      </div>
       {users.error && <p className="error">{users.error}</p>}
       {users.data && (
         <>

@@ -50,7 +50,13 @@ function TopBar({ admin, onAdmin }: { admin: boolean; onAdmin: (on: boolean) => 
   if (!me) return null;
   return (
     <nav className="topbar">
-      <span className="brand">Caro Online</span>
+      <div className="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="4" />
+          <path d="M3 9h18M3 15h18M9 3v18M15 3v18" opacity="0.6" />
+        </svg>
+        <span>Caro Online</span>
+      </div>
       {!room && me.role === 'ADMIN' && (
         <div className="tabs">
           <button type="button" className={!admin ? 'active' : ''} onClick={() => onAdmin(false)}>Sảnh</button>
@@ -58,13 +64,16 @@ function TopBar({ admin, onAdmin }: { admin: boolean; onAdmin: (on: boolean) => 
         </div>
       )}
       <span className="spacer" />
-      <span className={`conn conn-${connection}`}>{connectionText[connection]}</span>
+      <span className={`conn conn-${connection}`}>
+        <span className="dot" style={{ backgroundColor: connection === 'connected' ? 'var(--success)' : connection === 'reconnecting' ? 'var(--danger)' : 'var(--text-dim)', margin: 0 }} />
+        {connectionText[connection]}
+      </span>
       <button type="button" className="link me" onClick={() => modals.openProfile(me.id)}>
         {me.displayName} · <strong>{me.rating}</strong>
       </button>
       <button type="button" onClick={() => modals.openHistory(me.id, 'Lịch sử đấu của bạn')}>Lịch sử</button>
       <button type="button" onClick={modals.openLeaderboard}>Bảng xếp hạng</button>
-      <button type="button" onClick={() => store.logout()}>Đăng xuất</button>
+      <button type="button" className="danger" onClick={() => store.logout()}>Đăng xuất</button>
     </nav>
   );
 }

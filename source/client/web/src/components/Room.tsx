@@ -65,8 +65,10 @@ export function Room() {
         onPlay={play}
       />
       <aside className="side card">
-        <h2>{room.name}</h2>
-        <RoomTags room={room} watching={watching} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h2>{room.name}</h2>
+          <RoomTags room={room} watching={watching} />
+        </div>
         <PlayerCard mark="X" player={x} me={me.id} active={turn === 'X'} />
         <PlayerCard mark="O" player={o} me={me.id} active={turn === 'O'} />
 
@@ -94,7 +96,7 @@ export function Room() {
               </button>
             )}
             {live && match && <DrawControls match={match} meId={me.id} />}
-            {live && <button type="button" disabled={busy} onClick={resign}>Đầu hàng</button>}
+            {live && <button type="button" className="danger" disabled={busy} onClick={resign}>Đầu hàng</button>}
             <button type="button" disabled={busy} onClick={leave}>Rời phòng</button>
           </div>
         )}

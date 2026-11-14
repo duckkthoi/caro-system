@@ -41,7 +41,15 @@ export function Lobby() {
           </form>
         </header>
         {rooms.length === 0 ? (
-          <p className="muted empty">Chưa có phòng nào. Hãy tạo phòng hoặc tìm trận nhanh.</p>
+          <div className="empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            <p style={{ margin: 0, fontWeight: 500, color: 'var(--text)' }}>Chưa có phòng nào đang mở</p>
+            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>Hãy nhập tên ở trên để tạo phòng mới hoặc bấm "Tìm trận" để ghép đôi tự động.</p>
+          </div>
         ) : (
           <table>
             <thead>
@@ -120,22 +128,25 @@ function PlayBot() {
   const [level, setLevel] = useState<BotLevel>('EASY');
   const [blockTwoEnds, setBlockTwoEnds] = useState(false);
   return (
-    <section className="card quick">
+    <section className="card quick" style={{ borderLeftColor: '#6366f1' }}>
       <div>
-        <h2>Chơi với máy</h2>
-        <p className="muted">Luyện tập với máy. Không tính Elo và không lưu vào lịch sử.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h2>Chơi với máy</h2>
+          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', borderColor: '#c7d2fe' }}>Luyện tập</span>
+        </div>
+        <p className="muted">Luyện tập tư duy cùng AI thông minh. Trận đấu không tính điểm Elo và không lưu vào lịch sử.</p>
       </div>
       <div className="inline-form bot-form">
         <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Mức độ">
-          <option value="EASY">Dễ</option>
-          <option value="HARD">Khó</option>
+          <option value="EASY">Cấp độ: Dễ</option>
+          <option value="HARD">Cấp độ: Khó</option>
         </select>
         <label className="check">
           <input type="checkbox" checked={blockTwoEnds} onChange={(e) => setBlockTwoEnds(e.target.checked)} />
-          Chặn hai đầu
+          Chặn 2 đầu
         </label>
         <button type="button" className="primary" disabled={busy} onClick={() => run(() => store.playBot(level, blockTwoEnds))}>
-          Chơi
+          Bắt đầu chơi
         </button>
       </div>
     </section>
@@ -150,23 +161,27 @@ function QuickMatch() {
   return (
     <section className={`card quick ${inQueue ? 'searching' : ''}`}>
       <div>
-        <h2>Tìm trận nhanh</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h2>Tìm trận nhanh (Ranked)</h2>
+          {inQueue && <span className="badge presence-IN_QUEUE">Đang ghép cặp...</span>}
+        </div>
         {inQueue && queue ? (
-          <p>
+          <p style={{ color: 'var(--text)', marginTop: '0.25rem' }}>
             Đang tìm đối thủ ({queue.ratingRange === null ? 'bất kỳ ai' : `chênh lệch Elo ±${queue.ratingRange}`})
-            {' · '}đã chờ {T.clock(now - (queue.since ?? now))}{' · '}{queue.queueSize} người trong hàng chờ
+            {' · '}Đã chờ: <strong>{T.clock(now - (queue.since ?? now))}</strong>{' · '}{queue.queueSize} người trong hàng chờ
           </p>
         ) : (
-          <p className="muted">Ghép ngẫu nhiên với người có Elo gần bạn. Chờ càng lâu, khoảng điểm càng rộng.</p>
+          <p className="muted">Ghép đối thủ ngẫu nhiên có xếp hạng Elo tương đương. Đấu rank tính điểm xếp hạng.</p>
         )}
       </div>
       <button
         type="button"
-        className={inQueue ? '' : 'primary'}
+        className={inQueue ? 'danger' : 'primary'}
         disabled={busy}
+        style={{ padding: '0.625rem 1.25rem', fontSize: '0.925rem' }}
         onClick={() => run(() => (inQueue ? store.cancelQuickMatch() : store.quickMatch()))}
       >
-        {inQueue ? 'Hủy tìm trận' : 'Tìm trận'}
+        {inQueue ? 'Hủy tìm trận' : 'Tìm trận ngay'}
       </button>
     </section>
   );
