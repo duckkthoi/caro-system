@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useTheme } from '../state/theme';
 import type { FormEvent } from 'react';
 
 import { errorMessage } from '../api/protocol';
 import { store, useStore } from '../state/store';
 
 export function Login() {
+  const { setTheme, theme } = useTheme();
+  useEffect(() => {
+    const previous = theme;
+    setTheme('light');
+    return () => setTheme(previous);
+  }, []);
   const { logoutReason, connection } = useStore();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState(() => localStorage.getItem('caro.username') ?? '');
@@ -32,10 +39,28 @@ export function Login() {
   };
 
   return (
-    <main className="login">
+    <main className="login" data-theme="light">
       <form className="card login-card" onSubmit={submit}>
-        <h1>Caro Online</h1>
-        <p className="muted">Cờ ca rô 15×15 · chơi qua WebSocket</p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: 'var(--primary-subtle)',
+            color: 'var(--primary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'var(--shadow-xs)'
+          }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="4" />
+              <path d="M3 9h18M3 15h18M9 3v18M15 3v18" opacity="0.6" />
+            </svg>
+          </div>
+          <h1>Caro Online</h1>
+          <p className="muted">Cờ ca rô 15×15 đối kháng trực tuyến</p>
+        </div>
         {logoutReason && <p className="banner error">{logoutReason}</p>}
         <div className="tabs">
           <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>

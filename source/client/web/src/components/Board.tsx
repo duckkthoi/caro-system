@@ -46,9 +46,9 @@ export function Stone({ mark }: { mark: Mark }) {
   return (
     <svg viewBox="0 0 10 10" className={`stone stone-${mark}`} aria-hidden="true">
       {mark === 'X' ? (
-        <path d="M2 2 L8 8 M8 2 L2 8" />
+        <path d="M2.5 2.5 L7.5 7.5 M7.5 2.5 L2.5 7.5" strokeWidth="1.6" />
       ) : (
-        <circle cx="5" cy="5" r="3.2" />
+        <circle cx="5" cy="5" r="3.2" strokeWidth="1.6" />
       )}
     </svg>
   );
