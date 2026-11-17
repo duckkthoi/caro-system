@@ -98,25 +98,25 @@ function ProfileModal({ userId, onClose }: { userId: number; onClose: () => void
       {p && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
-            <span className="avatar-badge" style={{ width: '48px', height: '48px', fontSize: '1.25rem', background: '#172554', borderColor: '#3b82f6', color: '#60a5fa' }}>
+            <span className="avatar-badge" style={{ width: '48px', height: '48px', fontSize: '1.25rem', background: 'var(--primary-subtle)', borderColor: 'var(--primary-border)', color: 'var(--primary)' }}>
               {p.player.displayName.charAt(0).toUpperCase()}
             </span>
             <div>
-              <h3 style={{ fontSize: '1.15rem', color: '#ffffff' }}>{p.player.displayName}</h3>
+              <h3 style={{ fontSize: '1.15rem', color: 'var(--text-primary)' }}>{p.player.displayName}</h3>
               <span className="muted">@{p.player.username} · {p.online ? '🟢 Đang trực tuyến' : '⚪ Đang Offline'}</span>
             </div>
           </div>
           <dl className="facts">
-            <dt>Điểm Elo Xếp Hạng</dt><dd style={{ color: '#60a5fa' }}>{p.player.rating}</dd>
+            <dt>Điểm Elo Xếp Hạng</dt><dd style={{ color: 'var(--primary)' }}>{p.player.rating}</dd>
             <dt>Xếp Hạng Đấu Trường</dt><dd>{p.rank === null ? 'Chưa xếp hạng' : `Hạng #${p.rank}`}</dd>
             <dt>Ngày gia nhập</dt><dd>{T.date(p.joinedAt)}</dd>
           </dl>
           <div className="stats">
             <Stat label="Tổng Trận" value={p.stats.played} />
-            <Stat label="Thắng" value={<span style={{ color: '#4ade80' }}>{p.stats.wins}</span>} />
-            <Stat label="Thua" value={<span style={{ color: '#f87171' }}>{p.stats.losses}</span>} />
+            <Stat label="Thắng" value={<span style={{ color: 'var(--success)' }}>{p.stats.wins}</span>} />
+            <Stat label="Thua" value={<span style={{ color: 'var(--danger)' }}>{p.stats.losses}</span>} />
             <Stat label="Hòa" value={p.stats.draws} />
-            <Stat label="Tỉ Lệ Thắng" value={<span style={{ color: '#60a5fa' }}>{`${p.stats.winRate}%`}</span>} />
+            <Stat label="Tỉ Lệ Thắng" value={<span style={{ color: 'var(--primary)' }}>{`${p.stats.winRate}%`}</span>} />
           </div>
           <div className="actions">
             <button type="button" className="primary" onClick={() => modals.openHistory(userId, `Lịch sử đấu của ${p.player.displayName}`)}>
@@ -175,7 +175,7 @@ function HistoryModal({ userId, title, onClose }: { userId: number; title: strin
                     </span>
                   </td>
                   <td className="muted">{T.reason[h.reason]}</td>
-                  <td className="num" style={{ fontWeight: 600, color: h.ratingChange > 0 ? '#4ade80' : h.ratingChange < 0 ? '#f87171' : 'var(--text-muted)' }}>
+                  <td className="num" style={{ fontWeight: 600, color: h.ratingChange > 0 ? 'var(--success)' : h.ratingChange < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
                     {T.signed(h.ratingChange)}
                   </td>
                   <td className="num">{h.totalMoves}</td>
@@ -302,8 +302,8 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span className="avatar-badge" style={{
-                          background: isMe ? '#1e3a8a' : undefined,
-                          borderColor: isMe ? '#3b82f6' : undefined
+                          background: isMe ? 'var(--primary-subtle)' : undefined,
+                          borderColor: isMe ? 'var(--primary-border)' : undefined
                         }}>
                           {e.player.displayName.charAt(0).toUpperCase()}
                         </span>
@@ -312,11 +312,11 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
                             {e.player.displayName}
                           </button>
                           <span className="muted"> @{e.player.username}</span>
-                          {isMe && <span className="badge tag" style={{ background: '#1e3a8a', color: '#93c5fd' }}>Bạn</span>}
+                          {isMe && <span className="badge tag" style={{ background: 'var(--primary-subtle)', color: 'var(--primary)' }}>Bạn</span>}
                         </div>
                       </div>
                     </td>
-                    <td className="num" style={{ fontWeight: 700, color: '#60a5fa', fontSize: '0.95rem' }}>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.95rem' }}>
                       {e.player.rating}
                     </td>
                     <td>{e.online && <span className="dot" title="Đang online" />}</td>
