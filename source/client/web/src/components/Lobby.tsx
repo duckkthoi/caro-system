@@ -63,11 +63,11 @@ export function Lobby() {
               width: '56px',
               height: '56px',
               borderRadius: '16px',
-              background: '#f1f5f9',
+              background: 'var(--surface-well)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#94a3b8'
+              color: 'var(--text-dim)'
             }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -76,7 +76,7 @@ export function Lobby() {
               </svg>
             </div>
             <div>
-              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text)', fontSize: '0.95rem' }}>Chưa có phòng nào đang mở</p>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>Chưa có phòng nào đang mở</p>
               <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
                 Hãy đặt tên và nhấn nút <strong>"Tạo phòng"</strong> để mở phòng mới, hoặc bấm <strong>"Tìm trận"</strong> phía trên.
               </p>
@@ -99,7 +99,7 @@ export function Lobby() {
                 <tr key={r.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <strong style={{ color: 'var(--text)' }}>{r.name}</strong>
+                      <strong style={{ color: 'var(--text-primary)' }}>{r.name}</strong>
                       <RoomBadges room={r} />
                     </div>
                   </td>
@@ -145,19 +145,19 @@ export function Lobby() {
           {online.map((u) => {
             const isMe = u.id === me?.id;
             return (
-              <li key={u.id} style={{ background: isMe ? '#f0f7ff' : undefined }}>
+              <li key={u.id} style={{ background: isMe ? 'var(--primary-subtle)' : undefined }}>
                 <span className="avatar-badge" style={{
-                  background: isMe ? '#dbeafe' : undefined,
-                  borderColor: isMe ? '#93c5fd' : undefined
+                  background: isMe ? 'var(--primary-subtle)' : undefined,
+                  borderColor: isMe ? 'var(--primary-border)' : undefined
                 }}>
                   {u.displayName.charAt(0).toUpperCase()}
                 </span>
                 <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <button type="button" className="link" onClick={() => modals.openProfile(u.id)} style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    <button type="button" className="link" onClick={() => modals.openProfile(u.id)} style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                       {u.displayName}
                     </button>
-                    {isMe && <span className="badge tag" style={{ background: '#dbeafe', color: '#1d4ed8' }}>Bạn</span>}
+                    {isMe && <span className="badge tag" style={{ background: 'var(--primary-subtle)', color: 'var(--primary)' }}>Bạn</span>}
                   </div>
                   <span className="muted" style={{ fontSize: '0.8rem' }}>Elo {u.rating}</span>
                 </div>
@@ -190,10 +190,10 @@ function HeroBanner({ user }: { user: { displayName: string; username: string; r
           <span className="hero-stat-label">Hạng Elo hiện tại</span>
           <span className="hero-stat-val">{user.rating}</span>
         </div>
-        <div style={{ width: '1px', height: '32px', background: '#bfdbfe' }} />
+        <div style={{ width: '1px', height: '32px', background: 'var(--primary-border)' }} />
         <div className="hero-stat-item">
           <span className="hero-stat-label">Tài khoản</span>
-          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)' }}>@{user.username}</span>
+          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>@{user.username}</span>
         </div>
       </div>
     </section>
@@ -204,12 +204,12 @@ function RoomBadges({ room }: { room: RoomInfo }) {
   return (
     <>
       {room.botLevel && (
-        <span className="badge tag" style={{ background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe' }}>
+        <span className="badge tag" style={{ background: 'var(--accent-purple-subtle)', color: 'var(--accent-purple)', borderColor: 'var(--accent-purple-border)' }}>
           🤖 Máy ({T.botLevel[room.botLevel]})
         </span>
       )}
       {room.blockTwoEnds && (
-        <span className="badge tag" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
+        <span className="badge tag" style={{ background: 'var(--warning-subtle)', color: 'var(--warning)', borderColor: 'var(--warning-border)' }}>
           🛡️ Chặn 2 đầu
         </span>
       )}
@@ -253,7 +253,7 @@ function PlayBot() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <h2>Chơi với Máy (AI Engine)</h2>
-            <span className="badge" style={{ background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe' }}>Không tính điểm</span>
+            <span className="badge" style={{ background: 'var(--accent-purple-subtle)', color: 'var(--accent-purple)', borderColor: 'var(--accent-purple-border)' }}>Không tính điểm</span>
           </div>
           <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.875rem' }}>
             Rèn luyện kỹ năng và chiến thuật với thuật toán Minimax Alpha-Beta. Kết quả không ảnh hưởng Elo.
@@ -296,11 +296,11 @@ function QuickMatch() {
             {inQueue ? (
               <span className="badge presence-IN_QUEUE">Đang tìm đối thủ...</span>
             ) : (
-              <span className="badge" style={{ background: '#dbeafe', color: '#1d4ed8', borderColor: '#bfdbfe' }}>Đấu Rank</span>
+              <span className="badge" style={{ background: 'var(--primary-subtle)', color: 'var(--primary)', borderColor: 'var(--primary-border)' }}>Đấu Rank</span>
             )}
           </div>
           {inQueue && queue ? (
-            <p style={{ color: 'var(--text)', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+            <p style={{ color: 'var(--text-primary)', marginTop: '0.25rem', fontSize: '0.9rem' }}>
               Đối thủ: <strong>{queue.ratingRange === null ? 'Bất kỳ ai' : `Chênh lệch Elo ±${queue.ratingRange}`}</strong>
               {' · '}Thời gian chờ: <strong>{T.clock(now - (queue.since ?? now))}</strong>
               {' · '}Hàng chờ: <strong>{queue.queueSize}</strong> người

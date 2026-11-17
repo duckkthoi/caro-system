@@ -73,7 +73,7 @@ export function Room() {
         {/* VS Battle Arena Players */}
         <div className="vs-arena">
           <PlayerCard mark="X" player={x} me={me.id} active={turn === 'X'} />
-          <div style={{ textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.1em' }}>
+          <div style={{ textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>
             VS
           </div>
           <PlayerCard mark="O" player={o} me={me.id} active={turn === 'O'} />
@@ -182,8 +182,8 @@ function RoomTags({ room, watching }: { room: RoomInfo; watching: boolean }) {
   return (
     <div className="tags">
       {watching && <span className="badge presence-SPECTATING">Đang theo dõi</span>}
-      {room.botLevel && <span className="badge tag" style={{ background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe' }}>Máy · {T.botLevel[room.botLevel]}</span>}
-      {room.blockTwoEnds && <span className="badge tag" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>{T.BLOCK_TWO_ENDS}</span>}
+      {room.botLevel && <span className="badge tag" style={{ background: 'var(--accent-purple-subtle)', color: 'var(--accent-purple)', borderColor: 'var(--accent-purple-border)' }}>Máy · {T.botLevel[room.botLevel]}</span>}
+      {room.blockTwoEnds && <span className="badge tag" style={{ background: 'var(--warning-subtle)', color: 'var(--warning)', borderColor: 'var(--warning-border)' }}>{T.BLOCK_TWO_ENDS}</span>}
     </div>
   );
 }
