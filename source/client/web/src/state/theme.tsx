@@ -29,12 +29,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     return 'light'; // Default to light as requested
   });
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved === 'light' || saved === 'dark') {
-      return saved;
-    }
-    return 'dark'; // Default to dark as requested
-  });
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
