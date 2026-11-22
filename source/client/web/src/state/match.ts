@@ -108,6 +108,16 @@ export function myRatingChange(m: MatchView, result: MatchResult): number {
   return m.myMark === null ? 0 : result.ratingChange?.[m.myMark] ?? 0;
 }
 
+/** How a finished match ended for me: WATCHED when I am only a spectator. */
+export type EndKind = 'WIN' | 'LOSS' | 'DRAW' | 'ABORTED' | 'WATCHED';
+
+export function endKind(m: MatchView, result: MatchResult): EndKind {
+  if (result.result === 'ABORTED') return 'ABORTED';
+  if (m.myMark === null) return 'WATCHED';
+  if (result.result === 'DRAW') return 'DRAW';
+  return result.result === `${m.myMark}_WIN` ? 'WIN' : 'LOSS';
+}
+
 /** Board after the first `count` moves of a stored match (replay). */
 export function positionAfter(size: number, moves: { x: number; y: number; mark: Mark }[], count: number): string[] {
   const rows = Array.from({ length: size }, () => '.'.repeat(size).split(''));

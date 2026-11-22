@@ -8,6 +8,7 @@ import {
   canPlay,
   drawOfferClosed,
   drawOffered,
+  endKind,
   finish,
   fromState,
   isMyTurn,
@@ -118,4 +119,19 @@ test('a draw offer is cleared by a move, by a refusal and by the end of the matc
   });
   assert.equal(ended.drawOfferFrom, null);
   assert.equal(ended.status, 'FINISHED');
+});
+
+test('the end of a match is a win, a loss or a draw for a player, and only watched for a spectator', () => {
+  const xWins = { matchId: 'm1', result: 'X_WIN', reason: 'FIVE_IN_ROW', winnerId: 1, ratingChange: { X: 16, O: -16 } } as const;
+  const draw = { matchId: 'm1', result: 'DRAW', reason: 'AGREED', winnerId: null, ratingChange: { X: 0, O: 0 } } as const;
+  const aborted = {
+    matchId: 'm1', result: 'ABORTED', reason: 'BOTH_DISCONNECTED', winnerId: null, ratingChange: { X: 0, O: 0 },
+  } as const;
+  assert.equal(endKind(fromState(start('X')), xWins), 'WIN');
+  assert.equal(endKind(fromState(start('O')), xWins), 'LOSS');
+  assert.equal(endKind(fromState(start(null)), xWins), 'WATCHED');
+  assert.equal(endKind(fromState(start('X')), draw), 'DRAW');
+  assert.equal(endKind(fromState(start(null)), draw), 'WATCHED');
+  assert.equal(endKind(fromState(start('O')), aborted), 'ABORTED');
+  assert.equal(endKind(fromState(start(null)), aborted), 'ABORTED');
 });

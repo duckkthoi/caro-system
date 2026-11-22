@@ -1,5 +1,7 @@
 // Vietnamese labels for the codes sent by the server.
 import type { BotLevel, EndReason, PlayerInfo, Presence, RoomStatus } from './api/protocol';
+import type { NoticeKind } from './state/store';
+import type { EndKind } from './state/match';
 
 export const roomStatus: Record<RoomStatus, string> = {
   WAITING: 'Đang chờ',
@@ -49,6 +51,29 @@ export const result: Record<string, string> = {
   O_WIN: 'O thắng',
   DRAW: 'Hòa',
   ABORTED: 'Bị hủy',
+};
+
+/** Result dialog after MATCH_END. WATCHED uses `result` instead (who won is not about me). */
+export const endTitle: Record<Exclude<EndKind, 'WATCHED'>, string> = {
+  WIN: 'Bạn đã chiến thắng!',
+  LOSS: 'Bạn đã thua',
+  DRAW: 'Ván cờ hòa',
+  ABORTED: 'Trận đấu bị hủy',
+};
+
+export const endIcon: Record<EndKind, string> = {
+  WIN: '🏆',
+  LOSS: '😢',
+  DRAW: '🤝',
+  ABORTED: '⚠️',
+  WATCHED: '🏁',
+};
+
+export const noticeIcon: Record<NoticeKind, string> = {
+  info: 'ℹ',
+  success: '✓',
+  warning: '!',
+  error: '✕',
 };
 
 export function signed(n: number): string {

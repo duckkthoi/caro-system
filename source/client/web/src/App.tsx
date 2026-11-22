@@ -4,6 +4,7 @@ import { AdminPage } from './admin/AdminPage';
 import { ConfirmProvider } from './components/Confirm';
 import { Lobby } from './components/Lobby';
 import { Login } from './components/Login';
+import { MatchEndDialog } from './components/MatchEndDialog';
 import { ModalProvider, useModals } from './components/Modals';
 import { Popups } from './components/Popups';
 import { Room } from './components/Room';
@@ -28,6 +29,7 @@ export function App() {
       <ConfirmProvider>
         <ModalProvider>
           <Screens />
+          <MatchEndDialog />
           <Popups />
         </ModalProvider>
       </ConfirmProvider>

@@ -36,8 +36,11 @@ export function Popups() {
         </div>
       )}
       {notices.map((n) => (
-        <div key={n.id} className={`popup notice ${n.kind}`} onClick={() => store.dismiss(n.id)}>
-          {n.text}
+        <div key={n.id} className={`popup notice ${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}
+          onClick={() => store.dismiss(n.id)}>
+          <span className="notice-icon" aria-hidden="true">{T.noticeIcon[n.kind]}</span>
+          <span className="notice-text">{n.text}</span>
+          <button type="button" className="ghost notice-close" aria-label="Đóng thông báo">✕</button>
         </div>
       ))}
     </div>

@@ -24,8 +24,10 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 're
 export interface Notice {
   id: number;
   text: string;
-  kind: 'info' | 'error';
+  kind: NoticeKind;
 }
+
+export type NoticeKind = 'info' | 'success' | 'warning' | 'error';
 
 export interface ChatLine extends ChatMessage {
   id: number;
@@ -39,6 +41,7 @@ export interface State {
   online: OnlineUser[];
   room: RoomInfo | null; // the room I play in, or the room I watch
   match: MatchView | null;
+  endedMatchId: string | null; // the match whose result dialog is open (only after a live MATCH_END)
   chat: ChatLine[]; // messages of the current room since I entered it
   queue: QueueStatus | null;
   invites: Invitation[]; // received, waiting for my answer
@@ -61,6 +64,7 @@ const initial: State = {
   online: [],
   room: null,
   match: null,
+  endedMatchId: null,
   chat: [],
   queue: null,
   invites: [],
@@ -152,7 +156,11 @@ class GameStore {
   /** Leaves my room, or stops watching. */
   async leaveRoom(): Promise<void> {
     await this.request('LEAVE_ROOM');
-    this.set({ room: null, match: null, chat: [] });
+    this.set({ room: null, match: null, endedMatchId: null, chat: [] });
+  }
+
+  closeMatchEnd(): void {
+    this.set({ endedMatchId: null });
   }
 
   async sendChat(text: string): Promise<void> {
@@ -318,7 +326,7 @@ class GameStore {
       const user = await this.connectAndAuth(token);
       this.reconnectUntil = 0;
       this.set({ me: user, connection: 'connected' });
-      this.notify('Đã kết nối lại');
+      this.notify('Đã kết nối lại', 'success');
       this.synchronize();
     } catch (e) {
       const code = e instanceof ServerError ? e.code : '';
@@ -346,10 +354,10 @@ class GameStore {
         this.set({ queue: d.queue });
         if (!d.room && rewatch) {
           this.spectate(rewatch)
-            .then(() => this.notify('Đã kết nối lại, tiếp tục xem phòng.'))
+            .then(() => this.notify('Đã kết nối lại, tiếp tục xem phòng.', 'success'))
             .catch(() => {
               this.set({ room: null, match: null, chat: [] });
-              this.notify('Phòng bạn đang xem đã đóng trong lúc mất kết nối.');
+              this.notify('Phòng bạn đang xem đã đóng trong lúc mất kết nối.', 'warning');
             });
           return;
         }
@@ -372,8 +380,13 @@ class GameStore {
       case 'ROOM_UPDATE':
         this.setRoom(data.room);
         break;
-      case 'MATCH_START':
-      case 'MATCH_STATE':
+      case 'MATCH_START': {
+        const started = M.fromState(data as MatchState);
+        this.set({ match: started, endedMatchId: null });
+        this.notify(startText(started), 'success');
+        break;
+      }
+      case 'MATCH_STATE': // resync (reconnect, spectate): no notice, no result dialog
         this.set({ match: M.fromState(data as MatchState) });
         break;
       case 'MOVE_APPLIED':
@@ -391,13 +404,13 @@ class GameStore {
           this.set({ match: M.opponentDisconnected(match!, data.graceDeadline, this.serverNow()) });
           this.notify(match!.myMark
             ? 'Đối thủ mất kết nối. Trận tạm dừng trong lúc chờ đối thủ quay lại.'
-            : 'Một người chơi mất kết nối. Trận tạm dừng.');
+            : 'Một người chơi mất kết nối. Trận tạm dừng.', 'warning');
         }
         break;
       case 'OPPONENT_RECONNECTED':
         if (current(data.matchId)) {
           this.set({ match: M.opponentReconnected(match!, data.turnDeadline) });
-          this.notify(match!.myMark ? 'Đối thủ đã kết nối lại. Trận tiếp tục.' : 'Người chơi đã kết nối lại.');
+          this.notify(match!.myMark ? 'Đối thủ đã kết nối lại. Trận tiếp tục.' : 'Người chơi đã kết nối lại.', 'success');
         }
         break;
       case 'DRAW_OFFERED':
@@ -410,7 +423,7 @@ class GameStore {
         if (current(data.matchId)) {
           const mine = match!.drawOfferFrom === this.state.me?.id;
           this.set({ match: M.drawOfferClosed(match!) });
-          if (mine && data.reason === 'DECLINED') this.notify('Đối thủ đã từ chối hòa.');
+          if (mine && data.reason === 'DECLINED') this.notify('Đối thủ đã từ chối hòa.', 'warning');
         }
         break;
       case 'CHAT_MESSAGE':
@@ -421,8 +434,8 @@ class GameStore {
         break;
       case 'SPECTATE_ENDED':
         if (this.state.room?.id === data.roomId) {
-          this.set({ room: null, match: null, chat: [] });
-          this.notify('Phòng bạn đang xem đã đóng.');
+          this.set({ room: null, match: null, endedMatchId: null, chat: [] });
+          this.notify('Phòng bạn đang xem đã đóng.', 'warning');
         }
         break;
       case 'QUEUE_STATUS':
@@ -452,6 +465,7 @@ class GameStore {
     const change = M.myRatingChange(match, result);
     this.set({
       match: M.finish(match, result),
+      endedMatchId: match.matchId,
       me: me && change !== 0 ? { ...me, rating: me.rating + change } : me,
     });
   }
@@ -467,7 +481,7 @@ class GameStore {
         UNAVAILABLE: `${outgoing.name} không còn sẵn sàng.`,
       };
       if (texts[reason]) {
-        this.notify(texts[reason]);
+        this.notify(texts[reason], 'warning');
       }
     }
   }
@@ -477,7 +491,12 @@ class GameStore {
     const match = this.state.match;
     const otherRoom = room !== null && match !== null && match.roomId !== room.id;
     const sameRoom = room !== null && this.state.room?.id === room.id;
-    this.set({ room, match: otherRoom ? null : match, chat: sameRoom ? this.state.chat : [] });
+    this.set({
+      room,
+      match: otherRoom ? null : match,
+      endedMatchId: sameRoom ? this.state.endedMatchId : null,
+      chat: sameRoom ? this.state.chat : [],
+    });
   }
 
   private async roomRequest(type: string, data: object = {}): Promise<RoomInfo> {
@@ -515,6 +534,13 @@ class GameStore {
 }
 
 export const store = new GameStore();
+
+function startText(m: MatchView): string {
+  if (m.myMark === null) {
+    return `Trận đấu bắt đầu: ${m.playerX.displayName} (X) gặp ${m.playerO.displayName} (O).`;
+  }
+  return m.myMark === 'X' ? 'Trận đấu bắt đầu! Bạn cầm X, đi trước.' : 'Trận đấu bắt đầu! Bạn cầm O, đối thủ đi trước.';
+}
 
 export function useStore(): State {
   return useSyncExternalStore(store.subscribe, store.getState);
