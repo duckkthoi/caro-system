@@ -56,7 +56,18 @@ public interface ClientListener {
     default void inviteClosed(String inviteId, String reason) {
     }
 
+    /** Colour of a notice. */
+    enum NoticeKind { INFO, SUCCESS, WARNING, ERROR }
+
     /** A short message worth showing to the user ("Đối thủ mất kết nối..."). */
-    default void notice(String text) {
+    default void notice(String text, NoticeKind kind) {
+    }
+
+    /** A new match started (MATCH_START), not a resync after a reconnect. Called after matchChanged. */
+    default void matchStarted(MatchView match) {
+    }
+
+    /** The current match just ended (MATCH_END), not a finished match seen again after a reconnect. */
+    default void matchEnded(MatchView match) {
     }
 }

@@ -35,6 +35,8 @@ final class Ui {
     static final Color MUTED = new Color(0x66, 0x66, 0x66);
     static final Color SUCCESS = new Color(0x2E, 0x7D, 0x32);
     static final Color DANGER = new Color(0xC6, 0x28, 0x28);
+    static final Color WARNING = new Color(0xE6, 0x8A, 0x00);
+    static final Color INFO = new Color(0x15, 0x65, 0xC0);
 
     private Ui() {
     }

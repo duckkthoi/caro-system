@@ -11,10 +11,10 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.Timer;
 
 import com.caro.client.app.ClientListener;
 import com.caro.client.app.GameClient;
+import com.caro.client.app.MatchView;
 import com.caro.client.model.OnlineUser;
 import com.caro.client.model.RoomInfo;
 import com.caro.client.model.UserInfo;
@@ -35,8 +35,8 @@ public final class MainFrame extends JFrame implements ClientListener {
     private final LoginPanel loginPanel;
     private final Invites invites;
     private final JLabel connectionLabel = Ui.muted("Chưa kết nối");
-    private final JLabel noticeLabel = new JLabel(" ");
-    private final Timer noticeTimer = new Timer(8000, e -> noticeLabel.setText(" "));
+    private final Toasts toasts = new Toasts(this);
+    private MatchEndDialog matchEndDialog; // open result dialog, if any
 
     public MainFrame(GameClient client, String defaultHost, int defaultPort) {
         super("Caro Online");
@@ -53,9 +53,7 @@ public final class MainFrame extends JFrame implements ClientListener {
         statusBar.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(1, 0, 0, 0, getBackground().darker()),
                 BorderFactory.createEmptyBorder(4, 10, 4, 10)));
-        statusBar.add(noticeLabel, BorderLayout.CENTER);
         statusBar.add(connectionLabel, BorderLayout.EAST);
-        noticeTimer.setRepeats(false);
 
         getContentPane().add(screens, BorderLayout.CENTER);
         getContentPane().add(statusBar, BorderLayout.SOUTH);
@@ -120,6 +118,7 @@ public final class MainFrame extends JFrame implements ClientListener {
 
     @Override
     public void loggedOut(String reason) {
+        closeMatchEnd();
         setTitle("Caro Online");
         cards.show(screens, LOGIN);
         loginPanel.focusFirstEmpty();
@@ -131,15 +130,45 @@ public final class MainFrame extends JFrame implements ClientListener {
 
     @Override
     public void roomChanged(RoomInfo room) {
+        if (room == null) {
+            closeMatchEnd();
+        }
         if (client.me() != null) {
             cards.show(screens, room == null ? LOBBY : ROOM);
         }
     }
 
-    /** Wraps inside the status bar instead of being cut with "..." when the window is narrow. */
     @Override
-    public void notice(String text) {
-        noticeLabel.setText(Ui.html(text, Math.max(200, getWidth() - 320)));
-        noticeTimer.restart();
+    public void notice(String text, NoticeKind kind) {
+        toasts.show(text, kind);
+    }
+
+    @Override
+    public void matchStarted(MatchView match) {
+        closeMatchEnd();
+        toasts.show(startText(match), NoticeKind.SUCCESS);
+    }
+
+    @Override
+    public void matchEnded(MatchView match) {
+        closeMatchEnd();
+        matchEndDialog = new MatchEndDialog(this, client, match);
+        matchEndDialog.setVisible(true);
+    }
+
+    private void closeMatchEnd() {
+        if (matchEndDialog != null) {
+            matchEndDialog.dispose();
+            matchEndDialog = null;
+        }
+    }
+
+    private static String startText(MatchView match) {
+        if (match.isSpectating()) {
+            return "Trận đấu bắt đầu: " + match.playerX().displayName() + " (X) gặp "
+                    + match.playerO().displayName() + " (O).";
+        }
+        return "X".equals(match.myMark()) ? "Trận đấu bắt đầu! Bạn cầm X, đi trước."
+                : "Trận đấu bắt đầu! Bạn cầm O, đối thủ đi trước.";
     }
 }

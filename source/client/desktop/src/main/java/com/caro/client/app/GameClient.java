@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import com.caro.client.app.ClientListener.ConnectionStatus;
+import com.caro.client.app.ClientListener.NoticeKind;
 import com.caro.client.model.ChatMessage;
 import com.caro.client.model.HistoryItem;
 import com.caro.client.model.Invitation;
@@ -430,7 +431,7 @@ public final class GameClient {
         }
         if (reconnectUntil == 0) {
             reconnectUntil = System.currentTimeMillis() + RECONNECT_WINDOW_MS;
-            fire(l -> l.notice(reason + ". Đang thử kết nối lại..."));
+            fire(l -> l.notice(reason + ". Đang thử kết nối lại...", NoticeKind.ERROR));
         }
         scheduleReconnect();
     }
@@ -471,7 +472,7 @@ public final class GameClient {
             if (error == null) {
                 reconnectUntil = 0;
                 loggedIn(Json.convert(data.path("user"), UserInfo.class));
-                fire(l -> l.notice("Đã kết nối lại"));
+                fire(l -> l.notice("Đã kết nối lại", NoticeKind.SUCCESS));
                 return;
             }
             String code = ServerException.codeOf(error);
@@ -508,11 +509,11 @@ public final class GameClient {
             if (!roomNode.isObject() && rewatch != null) {
                 spectate(rewatch).whenComplete((room, error) -> {
                     if (error == null) {
-                        fire(l -> l.notice("Đã kết nối lại, tiếp tục xem phòng."));
+                        fire(l -> l.notice("Đã kết nối lại, tiếp tục xem phòng.", NoticeKind.SUCCESS));
                     } else {
                         setRoom(null);
                         setMatch(null);
-                        fire(l -> l.notice("Phòng bạn đang xem đã đóng trong lúc mất kết nối."));
+                        fire(l -> l.notice("Phòng bạn đang xem đã đóng trong lúc mất kết nối.", NoticeKind.WARNING));
                     }
                 });
                 return;
@@ -527,7 +528,12 @@ public final class GameClient {
             case "ROOM_LIST" -> setRooms(data.path("rooms"));
             case "ONLINE_USERS" -> setOnline(data.path("users"));
             case "ROOM_UPDATE" -> setRoom(Json.convert(data.path("room"), RoomInfo.class));
-            case "MATCH_START", "MATCH_STATE" -> setMatch(MatchView.of(Json.convert(data, MatchState.class)));
+            case "MATCH_START" -> {
+                MatchView started = MatchView.of(Json.convert(data, MatchState.class));
+                setMatch(started);
+                fire(l -> l.matchStarted(started));
+            }
+            case "MATCH_STATE" -> setMatch(MatchView.of(Json.convert(data, MatchState.class))); // resync: no popup
             case "MOVE_APPLIED" -> {
                 MoveApplied move = Json.convert(data, MoveApplied.class);
                 if (isCurrentMatch(move.matchId())) {
@@ -542,7 +548,7 @@ public final class GameClient {
                     fireMatch();
                     String text = match.isSpectating() ? "Một người chơi mất kết nối. Trận tạm dừng."
                             : "Đối thủ mất kết nối. Trận tạm dừng trong lúc chờ đối thủ quay lại.";
-                    fire(l -> l.notice(text));
+                    fire(l -> l.notice(text, NoticeKind.WARNING));
                 }
             }
             case "OPPONENT_RECONNECTED" -> {
@@ -551,7 +557,7 @@ public final class GameClient {
                     fireMatch();
                     String text = match.isSpectating() ? "Người chơi đã kết nối lại."
                             : "Đối thủ đã kết nối lại. Trận tiếp tục.";
-                    fire(l -> l.notice(text));
+                    fire(l -> l.notice(text, NoticeKind.SUCCESS));
                 }
             }
             case "DRAW_OFFERED" -> {
@@ -559,7 +565,7 @@ public final class GameClient {
                     match.drawOffered(data.path("fromId").asLong());
                     fireMatch();
                     if (!match.isSpectating()) {
-                        fire(l -> l.notice("Đối thủ đề nghị hòa."));
+                        fire(l -> l.notice("Đối thủ đề nghị hòa.", NoticeKind.INFO));
                     }
                 }
             }
@@ -570,7 +576,7 @@ public final class GameClient {
                     match.drawOfferClosed();
                     fireMatch();
                     if (mine && "DECLINED".equals(data.path("reason").asText())) {
-                        fire(l -> l.notice("Đối thủ đã từ chối hòa."));
+                        fire(l -> l.notice("Đối thủ đã từ chối hòa.", NoticeKind.WARNING));
                     }
                 }
             }
@@ -586,7 +592,7 @@ public final class GameClient {
                 if (room != null && room.id().equals(data.path("roomId").asText())) {
                     setRoom(null);
                     setMatch(null);
-                    fire(l -> l.notice("Phòng bạn đang xem đã đóng."));
+                    fire(l -> l.notice("Phòng bạn đang xem đã đóng.", NoticeKind.WARNING));
                 }
             }
             case "QUEUE_STATUS" -> setQueue(Json.convert(data, QueueStatus.class));
@@ -602,7 +608,7 @@ public final class GameClient {
             case "KICKED" -> kickReason = "LOGGED_IN_ELSEWHERE".equals(data.path("reason").asText())
                     ? "Tài khoản của bạn vừa đăng nhập ở nơi khác"
                     : "Tài khoản của bạn đã bị khóa";
-            case "ERROR" -> fire(l -> l.notice("Lỗi: " + data.path("message").asText()));
+            case "ERROR" -> fire(l -> l.notice("Lỗi: " + data.path("message").asText(), NoticeKind.ERROR));
             default -> { } // unknown event from a newer server: ignore
         }
     }
@@ -619,6 +625,8 @@ public final class GameClient {
             fire(l -> l.meChanged(updated));
         }
         fireMatch();
+        MatchView ended = match;
+        fire(l -> l.matchEnded(ended));
     }
 
     private boolean isCurrentMatch(String matchId) {

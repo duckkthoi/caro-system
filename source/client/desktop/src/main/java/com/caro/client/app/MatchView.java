@@ -174,6 +174,26 @@ public final class MatchView implements BoardModel {
         return result;
     }
 
+    /** How a finished match ended for me. WATCHED when I am only a spectator. */
+    public enum EndKind { WIN, LOSS, DRAW, ABORTED, WATCHED }
+
+    /** @return null while the match is not finished */
+    public EndKind endKind() {
+        if (result == null) {
+            return null;
+        }
+        if ("ABORTED".equals(result.result())) {
+            return EndKind.ABORTED;
+        }
+        if (myMark == null) {
+            return EndKind.WATCHED;
+        }
+        if ("DRAW".equals(result.result())) {
+            return EndKind.DRAW;
+        }
+        return (myMark + "_WIN").equals(result.result()) ? EndKind.WIN : EndKind.LOSS;
+    }
+
     /** Milliseconds left in the current turn, using the server clock. */
     public long turnTimeLeftMs(long serverNow) {
         if (turnDeadline != null) {

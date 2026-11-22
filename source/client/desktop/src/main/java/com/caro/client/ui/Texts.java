@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
+import com.caro.client.app.MatchView.EndKind;
 import com.caro.client.model.PlayerInfo;
 import com.caro.client.model.RoomInfo;
 
@@ -88,6 +89,17 @@ final class Texts {
             case "DRAW" -> "Hòa";
             case "ABORTED" -> "Bị hủy";
             default -> result;
+        };
+    }
+
+    /** Title of the result dialog; a spectator sees who won instead. Same texts as the web client. */
+    static String endTitle(EndKind kind, String result) {
+        return switch (kind) {
+            case WIN -> "Bạn đã chiến thắng!";
+            case LOSS -> "Bạn đã thua";
+            case DRAW -> "Ván cờ hòa";
+            case ABORTED -> "Trận đấu bị hủy";
+            case WATCHED -> result(result) + "!";
         };
     }
 

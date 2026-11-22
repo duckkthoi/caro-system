@@ -38,13 +38,24 @@ class GameClientLiveTest {
         final ExecutorService ui = Executors.newSingleThreadExecutor();
         final GameClient client = new GameClient(ui);
         final List<String> notices = new CopyOnWriteArrayList<>();
+        final List<String> popups = new CopyOnWriteArrayList<>(); // "start X", "end WIN"... in order
         final String username = "lv" + UUID.randomUUID().toString().substring(0, 8);
 
         Player() {
             client.addListener(new ClientListener() {
                 @Override
-                public void notice(String text) {
+                public void notice(String text, NoticeKind kind) {
                     notices.add(text);
+                }
+
+                @Override
+                public void matchStarted(MatchView match) {
+                    popups.add("start " + match.myMark());
+                }
+
+                @Override
+                public void matchEnded(MatchView match) {
+                    popups.add("end " + match.endKind());
                 }
             });
         }
@@ -121,6 +132,8 @@ class GameClientLiveTest {
         assertEquals(5, a.read(() -> a.client.match().winLine().size()));
         assertEquals(1016, a.read(() -> a.client.me().rating()));
         assertEquals(984, b.read(() -> b.client.me().rating()));
+        assertEquals(List.of("start X", "end WIN"), a.popups);
+        assertEquals(List.of("start O", "end LOSS"), b.popups);
         String firstMatch = a.read(() -> a.client.match().matchId());
 
         // rematch: both ask, marks are swapped
@@ -129,6 +142,8 @@ class GameClientLiveTest {
         b.call(() -> b.client.rematch());
         a.await("second match", () -> !a.client.match().matchId().equals(firstMatch));
         assertEquals("O", a.read(() -> a.client.match().myMark()));
+        a.await("start popup of the rematch", () -> a.popups.size() == 3);
+        assertEquals("start O", a.popups.get(2));
 
         Page<HistoryItem> history = a.call(() -> a.client.history(null, 0, 10));
         assertEquals(1, history.totalItems());
@@ -162,6 +177,7 @@ class GameClientLiveTest {
         b.call(() -> b.client.move(8, 8));
         a.await("move after reconnect", () -> a.client.match().isMyTurn());
         assertNotEquals(null, a.read(() -> a.client.room()));
+        assertEquals(List.of("start X"), a.popups); // the resync after the reconnect is not a new match
     }
 
     @Test
