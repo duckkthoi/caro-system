@@ -88,6 +88,7 @@ export interface OnlineUser {
   username: string;
   displayName: string;
   rating: number;
+  role: 'PLAYER' | 'ADMIN'; // admins cannot be invited (rules.md section 15)
   status: Presence;
 }
 

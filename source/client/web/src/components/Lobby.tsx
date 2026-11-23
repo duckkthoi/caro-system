@@ -14,12 +14,14 @@ export function Lobby() {
   const [roomName, setRoomName] = useState('');
   const [blockTwoEnds, setBlockTwoEnds] = useState(false);
   const inQueue = queue?.inQueue ?? false;
+  // admins never play rated matches (rules.md section 15): only the bot and watching
+  const isAdmin = me?.role === 'ADMIN';
 
   return (
     <main className="lobby">
       {me && <HeroBanner user={me} />}
 
-      <QuickMatch />
+      {isAdmin ? <AdminNotice /> : <QuickMatch />}
       <PlayBot />
 
       {/* Available Rooms Section */}
@@ -29,7 +31,7 @@ export function Lobby() {
             <h2>Phòng đang mở</h2>
             <span className="count">{rooms.length}</span>
           </div>
-          <form
+          {!isAdmin && <form
             className="inline-form"
             onSubmit={(e) => {
               e.preventDefault();
@@ -54,7 +56,7 @@ export function Lobby() {
               </svg>
               Tạo phòng
             </button>
-          </form>
+          </form>}
         </header>
 
         {rooms.length === 0 ? (
@@ -78,7 +80,9 @@ export function Lobby() {
             <div>
               <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>Chưa có phòng nào đang mở</p>
               <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-                Hãy đặt tên và nhấn nút <strong>"Tạo phòng"</strong> để mở phòng mới, hoặc bấm <strong>"Tìm trận"</strong> phía trên.
+                {isAdmin
+                  ? 'Khi người chơi mở phòng, bạn có thể vào xem tại đây.'
+                  : <>Hãy đặt tên và nhấn nút <strong>"Tạo phòng"</strong> để mở phòng mới, hoặc bấm <strong>"Tìm trận"</strong> phía trên.</>}
               </p>
             </div>
           </div>
@@ -117,7 +121,7 @@ export function Lobby() {
                   <td className="num" style={{ fontWeight: 500 }}>{r.players.length}/2</td>
                   <td className="num">{r.spectators.length}</td>
                   <td className="right actions-cell">
-                    {r.status === 'WAITING' && (
+                    {r.status === 'WAITING' && !isAdmin && (
                       <button type="button" className="small primary" disabled={busy} onClick={() => run(() => store.joinRoom(r.id))}>
                         Vào phòng
                       </button>
@@ -162,7 +166,7 @@ export function Lobby() {
                   <span className="muted" style={{ fontSize: '0.8rem' }}>Elo {u.rating}</span>
                 </div>
                 <span className={`badge presence-${u.status}`}>{T.presence[u.status]}</span>
-                {!isMe && <InviteButton user={u} disabled={inQueue} />}
+                {!isMe && !isAdmin && u.role !== 'ADMIN' && <InviteButton user={u} disabled={inQueue} />}
               </li>
             );
           })}
@@ -233,6 +237,21 @@ function InviteButton({ user, disabled }: { user: OnlineUser; disabled: boolean 
   );
 }
 
+/** Shown to admins instead of the quick match card. */
+function AdminNotice() {
+  return (
+    <section className="quick-ranked-card">
+      <div>
+        <h2>Tài khoản quản trị</h2>
+        <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.875rem' }}>
+          Quản trị viên không tham gia trận xếp hạng (tạo phòng, vào phòng, tìm trận, mời đấu). Bạn vẫn có thể chơi với
+          máy, xem các phòng đang mở và dùng trang Quản trị.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 /** Play against the computer: unrated, not saved in the history. */
 function PlayBot() {
   const [busy, run] = useAction();
@@ -256,7 +275,7 @@ function PlayBot() {
             <span className="badge" style={{ background: 'var(--accent-purple-subtle)', color: 'var(--accent-purple)', borderColor: 'var(--accent-purple-border)' }}>Không tính điểm</span>
           </div>
           <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.875rem' }}>
-            Rèn luyện kỹ năng và chiến thuật với thuật toán Minimax Alpha-Beta. Kết quả không ảnh hưởng Elo.
+            Máy chấm điểm từng ô theo thế công và thế thủ rồi chọn nước tốt nhất. Kết quả không ảnh hưởng Elo.
           </p>
         </div>
       </div>

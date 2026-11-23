@@ -246,7 +246,7 @@ function PlayerCard({ mark, player, me, active }: { mark: 'X' | 'O'; player: Pla
 function InvitePicker({ onClose }: { onClose: () => void }) {
   const { online, me, outgoing } = useStore();
   const [busy, run] = useAction();
-  const candidates = online.filter((u) => u.id !== me?.id && T.invitable(u.status));
+  const candidates = online.filter((u) => u.id !== me?.id && u.role !== 'ADMIN' && T.invitable(u.status));
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-label="Mời người chơi">
