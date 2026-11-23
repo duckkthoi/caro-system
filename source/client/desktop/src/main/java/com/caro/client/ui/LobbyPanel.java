@@ -46,6 +46,7 @@ final class LobbyPanel extends JPanel implements ClientListener {
             u -> new Object[] {u.displayName() + " (" + u.username() + ")", u.rating(), Texts.presence(u.status())});
     private final JTable roomTable = table(roomModel);
     private final JTable onlineTable = table(onlineModel);
+    private final JButton createButton = new JButton("Tạo phòng");
     private final JButton joinButton = new JButton("Vào phòng");
     private final JButton spectateButton = new JButton("Xem");
     private final JButton inviteButton = new JButton("Mời chơi");
@@ -74,7 +75,6 @@ final class LobbyPanel extends JPanel implements ClientListener {
         add(header, BorderLayout.NORTH);
 
         // rooms
-        JButton createButton = new JButton("Tạo phòng");
         createButton.addActionListener(e -> createRoom(createButton));
         joinButton.addActionListener(e -> joinSelected());
         spectateButton.addActionListener(e -> spectateSelected());
@@ -126,6 +126,7 @@ final class LobbyPanel extends JPanel implements ClientListener {
     @Override
     public void meChanged(UserInfo me) {
         greeting.setText("Xin chào, " + me.displayName() + " · Elo " + me.rating());
+        updateQueueLabel(); // also refreshes the buttons, which depend on the role
     }
 
     @Override
@@ -199,7 +200,7 @@ final class LobbyPanel extends JPanel implements ClientListener {
     /** Double click: take the free seat if there is one, otherwise watch. */
     private void joinOrWatchSelected() {
         RoomInfo room = roomModel.at(roomTable.getSelectedRow());
-        if (room != null && room.isWaiting()) {
+        if (room != null && room.isWaiting() && !isAdmin()) {
             joinSelected();
         } else {
             spectateSelected();
@@ -224,19 +225,31 @@ final class LobbyPanel extends JPanel implements ClientListener {
     // ------------------------------------------------------------------ helpers
 
     private void updateButtons() {
+        // admins never play rated matches (docs/rules.md, section 15): only the bot and watching
+        boolean admin = isAdmin();
         RoomInfo room = roomModel.at(roomTable.getSelectedRow());
-        joinButton.setEnabled(room != null && room.isWaiting());
+        createButton.setEnabled(!admin);
+        quickButton.setEnabled(!admin);
+        joinButton.setEnabled(!admin && room != null && room.isWaiting());
         spectateButton.setEnabled(room != null);
         OnlineUser user = onlineModel.at(onlineTable.getSelectedRow());
         boolean notMe = user != null && client.me() != null && user.id() != client.me().id();
-        inviteButton.setEnabled(notMe && user.invitable() && !client.isInQueue());
+        inviteButton.setEnabled(!admin && notMe && user.invitable() && !client.isInQueue());
         profileButton.setEnabled(user != null);
+    }
+
+    private boolean isAdmin() {
+        UserInfo me = client.me();
+        return me != null && me.isAdmin();
     }
 
     private void updateQueueLabel() {
         QueueStatus q = client.queue();
         if (q == null || !q.inQueue()) {
-            queueLabel.setText(Ui.html("Ghép ngẫu nhiên với người có Elo gần bạn.", QUEUE_TEXT_WIDTH));
+            String idle = isAdmin()
+                    ? "Quản trị viên không tham gia trận xếp hạng (tạo/vào phòng, tìm trận, mời). Vẫn chơi được với máy và xem phòng."
+                    : "Ghép ngẫu nhiên với người có Elo gần bạn.";
+            queueLabel.setText(Ui.html(idle, QUEUE_TEXT_WIDTH));
             updateButtons();
             return;
         }
