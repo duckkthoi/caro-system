@@ -154,6 +154,7 @@ theo đồng hồ server**. Client nên dùng `serverTime` trong `PONG` để b�
 
 // OnlineUser
 {"id": 2, "username": "bob", "displayName": "Bob", "rating": 1016,
+ "role": "PLAYER",              // PLAYER | ADMIN. Không mời được ADMIN (rules.md mục 15)
  "status": "IDLE"}              // IDLE | IN_QUEUE | IN_ROOM | PLAYING | SPECTATING
 
 // QueueStatus
@@ -286,7 +287,7 @@ ví dụ `"2026-10-23T05:48:08.653Z"` (khác với `turnDeadline`/`graceDeadline
 | `RATE_LIMITED` | Gửi thông điệp quá nhanh, hoặc đăng nhập/đăng ký quá nhiều lần từ một IP (rules.md mục 13). REST trả HTTP `429` |
 | `DRAW_OFFER_NOT_ALLOWED` | Cầu hòa khi đang có một lời cầu hòa chờ trả lời, hoặc cầu hòa lại khi chưa có nước đi nào kể từ lần trước |
 | `NO_DRAW_OFFER` | Trả lời cầu hòa khi không có lời cầu hòa nào của đối thủ |
-| `FORBIDDEN` | Không đủ quyền (REST admin) |
+| `FORBIDDEN` | Không đủ quyền (REST admin). Hoặc admin gửi `CREATE_ROOM`, `JOIN_ROOM`, `QUICK_MATCH`, `INVITE`, hay mời một admin (rules.md mục 15) |
 | `INTERNAL_ERROR` | Lỗi không lường trước ở server |
 
 ## 7. Ví dụ phiên làm việc qua TCP

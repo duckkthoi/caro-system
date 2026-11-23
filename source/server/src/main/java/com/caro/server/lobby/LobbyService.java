@@ -3,9 +3,11 @@ package com.caro.server.lobby;
 import java.time.Clock;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
@@ -30,6 +32,8 @@ import com.caro.server.match.MatchState;
 import com.caro.server.net.ServerMessageType;
 import com.caro.server.net.SessionRegistry;
 import com.caro.server.user.PlayerInfo;
+import com.caro.server.user.Role;
+import com.caro.server.user.User;
 import com.caro.server.user.UserRepository;
 
 import jakarta.annotation.PostConstruct;
@@ -61,6 +65,7 @@ public class LobbyService implements MatchEndListener {
     private final Map<Long, Room> roomByUser = new HashMap<>();   // players only
     private final Map<Long, Room> spectating = new HashMap<>();   // spectators only
     private final Map<Long, PlayerInfo> online = new HashMap<>();
+    private final Set<Long> admins = new HashSet<>();             // online users with role ADMIN
     private final Map<String, Invitation> invites = new LinkedHashMap<>();
     private final MatchmakingQueue queue;
     // ----
@@ -120,6 +125,7 @@ public class LobbyService implements MatchEndListener {
             throw new AppException(ErrorCode.VALIDATION_ERROR, "Tên phòng tối đa 40 ký tự");
         }
         synchronized (lock) {
+            requireNotAdmin(userId);
             requireNotInRoom(userId);
             dropFromQueue(userId);
             Room room = openRoom(me, name, blockTwoEnds, null);
@@ -145,6 +151,7 @@ public class LobbyService implements MatchEndListener {
     /** Joining a waiting room starts the match right away. The host plays X. */
     public RoomInfo joinRoom(long userId, String roomId) {
         synchronized (lock) {
+            requireNotAdmin(userId);
             requireNotInRoom(userId);
             Room room = rooms.get(roomId);
             if (room == null) {
@@ -311,6 +318,7 @@ public class LobbyService implements MatchEndListener {
     public QueueStatus joinQueue(long userId) {
         PlayerInfo me = loadPlayer(userId);
         synchronized (lock) {
+            requireNotAdmin(userId);
             requireNotInRoom(userId);
             if (queue.contains(userId)) {
                 throw new AppException(ErrorCode.ALREADY_IN_QUEUE, "Bạn đang trong hàng chờ");
@@ -364,8 +372,12 @@ public class LobbyService implements MatchEndListener {
             if (targetId == userId) {
                 throw new AppException(ErrorCode.VALIDATION_ERROR, "Không thể tự mời chính mình");
             }
+            requireNotAdmin(userId);
             if (!online.containsKey(targetId)) {
                 throw new AppException(ErrorCode.USER_OFFLINE, "Người chơi này không online");
+            }
+            if (admins.contains(targetId)) {
+                throw new AppException(ErrorCode.FORBIDDEN, "Không thể mời quản trị viên vào trận xếp hạng");
             }
             Room myRoom = roomByUser.get(userId);
             if (myRoom != null && myRoom.status() != RoomStatus.WAITING) {
@@ -406,6 +418,7 @@ public class LobbyService implements MatchEndListener {
     public RoomInfo acceptInvite(long userId, String inviteId) {
         synchronized (lock) {
             Invitation invitation = requireInviteTo(userId, inviteId);
+            requireNotAdmin(userId);
             requireNotInRoom(userId);
             long inviterId = invitation.fromId();
             Room room = roomByUser.get(inviterId);
@@ -516,9 +529,15 @@ public class LobbyService implements MatchEndListener {
 
     /** After LOGIN/AUTH: appear online, resend the room and match state, and resume a paused match. */
     public void onUserConnected(long userId) {
-        PlayerInfo me = loadPlayer(userId);
+        User user = loadUser(userId);
+        PlayerInfo me = PlayerInfo.from(user);
         synchronized (lock) {
             online.put(userId, me);
+            if (user.getRole() == Role.ADMIN) {
+                admins.add(userId);
+            } else {
+                admins.remove(userId);
+            }
             Room room = roomByUser.get(userId);
             if (room != null) {
                 sessions.sendToUser(userId, ServerMessageType.ROOM_UPDATE, Map.of("room", room.info()));
@@ -540,6 +559,7 @@ public class LobbyService implements MatchEndListener {
                 return; // already back with a new session
             }
             online.remove(userId);
+            admins.remove(userId);
             queue.remove(userId);
             stopSpectating(userId);
             closeInvitesOf(userId, InviteCloseReason.UNAVAILABLE);
@@ -750,6 +770,14 @@ public class LobbyService implements MatchEndListener {
         }
     }
 
+    /** Admins never play a rated match: every human-vs-human match is rated (docs/rules.md, section 15). */
+    private void requireNotAdmin(long userId) {
+        if (admins.contains(userId)) {
+            throw new AppException(ErrorCode.FORBIDDEN,
+                    "Quản trị viên không tham gia trận xếp hạng (chỉ được chơi với máy hoặc xem)");
+        }
+    }
+
     private PresenceStatus presenceOf(long userId) {
         if (queue.contains(userId)) {
             return PresenceStatus.IN_QUEUE;
@@ -773,8 +801,11 @@ public class LobbyService implements MatchEndListener {
     }
 
     private PlayerInfo loadPlayer(long userId) {
+        return PlayerInfo.from(loadUser(userId));
+    }
+
+    private User loadUser(long userId) {
         return users.findById(userId)
-                .map(PlayerInfo::from)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Tài khoản không tồn tại"));
     }
 
@@ -797,7 +828,7 @@ public class LobbyService implements MatchEndListener {
     private List<OnlineUser> onlineUsers() {
         return online.values().stream()
                 .sorted(Comparator.comparing(PlayerInfo::username))
-                .map(p -> OnlineUser.of(p, presenceOf(p.id())))
+                .map(p -> OnlineUser.of(p, admins.contains(p.id()) ? Role.ADMIN : Role.PLAYER, presenceOf(p.id())))
                 .toList();
     }
 

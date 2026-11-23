@@ -193,6 +193,9 @@ Server gửi lại danh sách cho mọi người mỗi khi có người vào/ra,
 - Trận với máy **không tính Elo** (`ratingChange` luôn là `0`) và **không lưu vào lịch sử**.
 - Các luật khác giữ nguyên: 30 giây/lượt, đầu hàng, rời phòng tính là thua, mất kết nối thì máy chờ 30 giây.
 - Phòng chơi với máy hiện trong danh sách phòng, người khác có thể vào xem nhưng không thể vào chơi.
+- Máy chọn nước bằng **heuristic nhìn trước một nước**: chấm điểm từng ô trống gần các quân đã có theo độ dài dãy
+  và số đầu còn mở (tấn công cộng phòng thủ), rồi đi ô điểm cao nhất. Mức dễ coi nhẹ phòng thủ hơn và chọn ngẫu nhiên
+  trong 4 ô tốt nhất. Máy **không** tìm kiếm cây nước đi (không có minimax).
 
 ## 13. Giới hạn tần suất (rate limit)
 
@@ -223,3 +226,17 @@ Mỗi kết nối có hai "xô token" (token bucket). Mỗi thông điệp lấy
 - Lời cầu hòa tự hủy khi có người đi một nước (`DRAW_OFFER_CLOSED`, lý do `MOVED`), coi như không chấp nhận.
 - Người xem không cầu hòa và không trả lời được. Máy (bot) luôn từ chối.
 - Người kết nối lại thấy lời cầu hòa đang chờ trong `MatchState.drawOfferFrom`.
+
+## 15. Quản trị viên (admin)
+
+- Tài khoản role `ADMIN` dùng để **quản trị**, không tham gia **trận tính Elo**. Mọi trận giữa hai người đều tính Elo,
+  nên admin **không** được:
+  - tạo phòng (`CREATE_ROOM`) hoặc vào phòng để chơi (`JOIN_ROOM`);
+  - tìm trận nhanh (`QUICK_MATCH`);
+  - gửi lời mời (`INVITE`), và người khác cũng **không mời được** admin.
+
+  Các yêu cầu trên trả lỗi `FORBIDDEN`.
+- Admin **vẫn được**: chơi với máy (không tính Elo), xem phòng và chat khi đang xem, xem lịch sử, hồ sơ, bảng xếp hạng,
+  và dùng trang quản trị.
+- Admin không có tên trên bảng xếp hạng. Điểm và các trận cũ của admin (nếu có) được giữ nguyên.
+- Danh sách online có trường `role`, để client ẩn nút mời với admin.

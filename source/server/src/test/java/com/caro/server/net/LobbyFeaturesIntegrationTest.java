@@ -150,6 +150,40 @@ class LobbyFeaturesIntegrationTest {
         }
     }
 
+    @Test
+    void adminCannotPlayRatedMatchesButCanPlayTheBotAndWatch() throws Exception {
+        try (TestClient admin = TestClient.tcp(tcpServer.getLocalPort());
+             TestClient p = tcpLoggedIn(uniqueName("ap"))) {
+            admin.ok("LOGIN", Map.of("username", "admin", "password", "admin123"));
+            long adminId = id(admin);
+
+            // the online list tells clients who is an admin
+            for (JsonNode u : p.ok("LIST_ONLINE", Map.of()).path("users")) {
+                String expected = u.path("id").asLong() == adminId ? "ADMIN" : "PLAYER";
+                assertThat(u.path("role").asText()).as("%s", u).isEqualTo(expected);
+            }
+
+            assertError(admin.request("CREATE_ROOM", Map.of()), "FORBIDDEN");
+            assertError(admin.request("QUICK_MATCH", Map.of()), "FORBIDDEN");
+            assertError(admin.request("INVITE", Map.of("userId", id(p))), "FORBIDDEN");
+            assertError(p.request("INVITE", Map.of("userId", adminId)), "FORBIDDEN");
+
+            String roomId = p.ok("CREATE_ROOM", Map.of()).path("room").path("id").asText();
+            assertError(admin.request("JOIN_ROOM", Map.of("roomId", roomId)), "FORBIDDEN");
+            assertThat(presenceOf(p, adminId)).isEqualTo("IDLE");
+
+            // watching and chatting are still allowed
+            admin.ok("SPECTATE", Map.of("roomId", roomId));
+            admin.ok("CHAT", Map.of("text", "hello"));
+            admin.ok("LEAVE_ROOM", Map.of());
+
+            // so is the bot (unrated)
+            JsonNode botRoom = admin.ok("PLAY_BOT", Map.of("level", "EASY")).path("room");
+            assertThat(botRoom.path("status").asText()).isEqualTo("PLAYING");
+            assertThat(admin.awaitType("MATCH_START").path("data").path("rated").asBoolean()).isFalse();
+        }
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private TestClient tcpLoggedIn(String username) throws Exception {
